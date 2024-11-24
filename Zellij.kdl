@@ -1,0 +1,32 @@
+
+layout {
+	tab name="terminal" split_direction="vertical" {
+		pane command="cd" {
+			cwd "./"
+			args "./server"
+			name "server"
+		}
+		
+		pane command="cd" {
+			cwd "./"
+			args "./client"
+			name "client"
+		}
+	}
+
+	tab name="client" {
+		pane command="hx" {
+			cwd "./"
+			args "./server"
+			name "client"
+		}
+	}
+
+	tab name="server" {
+		pane command="hx" {
+			cwd "./"
+			args "./server"
+			name "server"
+		}
+	}
+}

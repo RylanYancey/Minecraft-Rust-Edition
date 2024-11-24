@@ -1,0 +1,18 @@
+
+{
+  "singleplayer": "Singleplayer",
+  "multiplayer": "Multiplayer",
+  "options": "Options...",
+  "quit": "Quit Game",
+  "copyright": "Copyright (Infringement) @Rylan Yancey 2024",
+  "version": "Minecraft:RE 4.20.69",
+  "select-world": "Select World",
+  "create-world": "Create World",
+  "play-selected": "Play Selected World",
+  "edit": "Edit",
+  "delete": "Delete",
+  "re-create": "Re-create",
+  "back": "Back",
+  "studios": "Studios",
+  "company": "JANZEN"
+}

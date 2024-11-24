@@ -1,0 +1,7 @@
+
+{
+    "size": 2048,
+    "include": [
+        "dir:blocks"
+    ]
+}
