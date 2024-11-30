@@ -1,94 +1,76 @@
-use std::{fmt::Debug, ops::{Deref, DerefMut}};
-
-use bevy_ecs::system::Resource;
+use std::{collections::BTreeMap, fmt::Debug, ops::{Deref, DerefMut}};
+use bevy::prelude::*;
+use super::Id;
 
 #[derive(Resource)]
-pub struct Registry<I: RegistryItem> {
-    entries: Vec<(I::ID, Entry<I>)>,
-}
-
-impl<I: RegistryItem> Registry<I> {
-    pub fn add(&mut self, item: I, name: &str) {
-        let id = I::ID::from(name.to_string());
-
-        match self.entries.binary_search_by(|(other_id, _)| id.cmp(other_id)) {
-            Ok(i) => {
-                panic!(
-                    "Attempted to insert into registry '{}' an item with name '{name}', but an existing entry with name '{}' has the same ID.", 
-                    I::registry_name(), self.entries[i].1.name()
-                )
-            },
-
-            Err(i) => {
-                self.entries.insert(i, (
-                    id,
-                    Entry { 
-                        name: name.to_string(), 
-                        id, item 
-                    }
-                ));
-            }
-        }
-    }
-
-    /// Get the entry with the id, panicking if it does not exist.
-    pub fn find(&self, key: I::ID) -> Option<&Entry<I>> {
-        match self.entries.binary_search_by(|(other_id, _)| key.cmp(other_id)) {
-            Ok(i) => Some(&self.entries[i].1,),
-            Err(_) => None
-        }
-    }
-
-    /// Get the entry with the id, panicking if it does not exist.
-    pub fn find_mut(&mut self, key: I::ID) -> Option<&mut Entry<I>> {
-        match self.entries.binary_search_by(|(other_id, _)| key.cmp(other_id)) {
-            Ok(i) => Some(&mut self.entries[i].1),
-            Err(_) => None
-        }
-    }
-
-    /// Find the element with the name, throwing an error if it does not exist.
-    pub fn expect(&self, name: &str) -> &Entry<I> {
-        self.find(I::ID::from(name.to_string())).unwrap_or_else(|| {
-            panic!("Expected an element with name {name} from registry {} to exist, but it did not.", I::registry_name())
-        })
-    }
-
-    /// Find the element with the name, throwing an error if it does not exist.
-    pub fn expect_mut(&mut self, name: &str) -> &mut Entry<I> {
-        self.find_mut(I::ID::from(name.to_string())).unwrap_or_else(|| {
-            panic!("Expected an element with name {name} from registry {} to exist, but it did not.", I::registry_name())
-        })
-    }
-
-    pub fn iter(&self) -> impl Iterator<Item=&Entry<I>> {
-        self.entries.iter().map(|(_, entry)| entry)
-    }
-
-    pub fn iter_mut(&mut self) -> impl Iterator<Item=&mut Entry<I>> {
-        self.entries.iter_mut().map(|(_, entry)| entry)
-    }
-}
-
-pub struct Entry<I: RegistryItem> {
+pub struct Registry<I: 'static> {
     name: String,
-    id: I::ID,
-    pub item: I,
+    entries: Vec<Entry<I>>,
+    map: BTreeMap<GlobalID, u32>,
 }
 
-impl<I: RegistryItem> Entry<I> {
-    pub fn name(&self) -> &'static str {
-        unsafe {
-            std::mem::transmute(&*self.name)
+impl<I: 'static> Registry<I> {
+    pub fn new(name: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            entries: Vec::with_capacity(1024),
+            map: BTreeMap::new()
         }
     }
 
-    pub fn id(&self) -> &I::ID {
-        &self.id
+    pub fn add(&mut self, id: Id, item: I) {
+        let index = self.entries.len() as u32;
+        self.entries.push(Entry { id, index, item});
+        
+        if let Some(existing) = self.map.insert(GlobalID(id.id()), index) {
+            log::error!("Inserted entry with name '{}' into registry '{}', but an entry with name '{}' has the same hash '{}'!", 
+                id.name(), self.name, self.entries[existing as usize].id.name(), id.id());    
+        } else {
+            log::info!("Inserted entry with name '{}' into registry '{}'", id.name(), self.name);
+        }
+    }
+
+    pub fn get_by_local(&self, local: LocalID) -> &Entry<I> {
+        &self.entries[local.0 as usize]
+    }
+
+    pub fn get_by_global(&self, global: GlobalID) -> Option<&Entry<I>> {
+        self.map.get(&global).map(|index| &self.entries[*index as usize])
     }
 }
 
-impl<I: RegistryItem> Deref for Entry<I> {
+pub struct Entry<I> {
+    /// The Entries name and hash.
+    id: Id,
+
+    /// The Index of the entry in the `entries` vec.
+    index: u32,
+
+    /// the Item itself.
+    item: I,
+}
+
+impl<I> Entry<I> {
+    /// Get the ID, which contains both
+    /// the name of the entry and its hash.
+    pub fn id(&self) -> Id {
+        self.id
+    }
+
+    /// Get the GlobalID, which contains the
+    /// hash of the entry's name from the Id.
+    pub fn global_id(&self) -> GlobalID {
+        GlobalID(self.id.id())
+    }
+
+    /// Get the LocalID, which contains the
+    /// index of the entry in the Registry.
+    pub fn local_id(&self) -> LocalID {
+        LocalID(self.index)
+    }
+}
+
+impl<I> Deref for Entry<I> {
     type Target = I;
 
     fn deref(&self) -> &Self::Target {
@@ -96,32 +78,44 @@ impl<I: RegistryItem> Deref for Entry<I> {
     }
 }
 
-impl<I: RegistryItem> DerefMut for Entry<I> {
+impl<I> DerefMut for Entry<I> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.item
     }
 }
 
-pub trait RegistryItem {
-    type ID: PartialOrd + Ord + From<String> + Copy + Debug;
+/// The GlobalID of a Registry Entry
+/// is the hash of its name. This hash
+/// is consistent across versions and
+/// platforms, so long as the name of 
+/// the entry stays the same.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct GlobalID(u32);
 
-    fn registry_name() -> &'static str;
-    fn id(&self) -> Self::ID;
-}
-
-#[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
-pub struct LocalID(pub u32);
-
-impl LocalID {
-    pub fn id(&self) -> u32 {
+impl GlobalID {
+    pub fn new(hash: u32) -> Self {
+        Self(hash)
+    }
+    
+    pub fn hash(&self) -> u32 {
         self.0
     }
 }
 
-impl Deref for LocalID {
-    type Target = u32;
+/// The LocalID of a Registry Entry 
+/// is the index within the `entries` vec
+/// the entry resides. This index is based
+/// on insertion order and is guaranteed
+/// to NOT be consistent across versions.
+#[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
+pub struct LocalID(u32);
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+impl LocalID {
+    pub fn new(index: u32) -> Self {
+        Self(index)
+    }
+    
+    pub fn index(&self) -> u32 {
+        self.0
     }
 }

@@ -1,4 +1,3 @@
-
 //! Behaviours of loading screens
 
 pub mod game;
@@ -13,4 +12,3 @@ pub struct LoadHintText;
 
 #[derive(Component)]
 pub struct LoadingBar;
-

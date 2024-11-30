@@ -1,4 +1,3 @@
-
 use bevy::prelude::*;
 
 #[derive(Component, Eq, Debug)]
@@ -13,8 +12,12 @@ impl<T> Toggled<T> {
         match self {
             Toggled::On => Toggled::On,
             Toggled::Off => Toggled::Off,
-            Toggled::Marker(_) => Toggled::Marker(std::marker::PhantomData)
+            Toggled::Marker(_) => Toggled::Marker(std::marker::PhantomData),
         }
+    }
+
+    pub fn is_on(&self) -> bool {
+        *self == Self::On
     }
 }
 

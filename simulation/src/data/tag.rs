@@ -1,57 +1,61 @@
 
-use xxhash_rust::const_xxh32::xxh32;
+use super::{Id, SortedSet};
 
 #[derive(Clone, Eq, PartialEq, Debug)]
-pub struct TagSet(Vec<Tag>);
+pub struct TagSet(SortedSet<Tag>);
 
 impl TagSet {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self(SortedSet::new())
     }
 
-    /// Returns this tag set with the provided tag.
     pub fn with(mut self, tag: Tag) -> Self {
-        if let Err(i) = self.0.binary_search_by(|other| tag.id.cmp(&other.id)) {
-            self.0.insert(i, tag);
-        }
-
+        self.0.insert(tag);
         self
     }
 
-    /// Sets the provided tag into the tag set.
-    pub fn set(&mut self, tag: Tag) {
-        if let Err(i) = self.0.binary_search_by(|other| tag.id.cmp(&other.id)) {
-            self.0.insert(i, tag);
-        }
-    }
-    
-    /// Returns 'true' if this set has the provided tag.
-    pub fn has(&self, tag: &Tag) -> bool {
-        self.0.binary_search_by(|other| tag.id.cmp(&other.id)).is_ok()
+    pub fn add(&mut self, tag: Tag) {
+        self.0.insert(tag);
     }
 
-    /// Returns 'true' if an item was successfully removed from this set.
     pub fn remove(&mut self, tag: &Tag) -> bool {
-        if let Ok(i) = self.0.binary_search_by(|other| tag.id.cmp(&other.id)) {
-            self.0.remove(i);
-            true
-        } else {
-            false
-        }
+        self.0.remove(tag)
+    }
+
+    pub fn has(&self, tag: &Tag) -> bool {
+        self.0.contains(tag)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item=&Tag> {
+        self.0.iter()
     }
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub struct Tag {
-    pub name: &'static str,
-    pub id: u32,
-}
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Ord, PartialOrd)]
+pub struct Tag(pub Id);
 
 impl Tag {
-    pub const fn new(name: &'static str) -> Self {
-        Self {
-            name, id: xxh32(name.as_bytes(), 4206942069)
-        }
+    pub const fn new(id: &'static str) -> Self {
+        Self(Id::new(id))
+    }
+
+    pub const fn id(&self) -> u32 {
+        self.0.id()
+    }
+
+    pub const fn name(&self) -> &'static str {
+        self.0.name()
     }
 }
 
+impl From<String> for Tag {
+    fn from(value: String) -> Self {
+        Self(Id::from(value))
+    }
+}
+
+impl From<Id> for Tag {
+    fn from(value: Id) -> Self {
+        Self(value)
+    }
+}

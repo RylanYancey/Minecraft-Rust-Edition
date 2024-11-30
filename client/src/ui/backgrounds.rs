@@ -1,21 +1,14 @@
+use super::MenuRoot;
 use super::{
-    helper::{node, NodeBundleExt},
+    helper::node,
     menus::{MAX_MENU_CONTENT_WIDTH, MENU_CONTENT_WIDTH},
 };
 use crate::{
     camera::MainCamera,
     util::{blur::BlurMaterial, spin::Spin},
 };
-use bevy::{
-    prelude::*,
-    render::mesh::{RectangleMeshBuilder, SphereKind, SphereMeshBuilder},
-};
-use std::{
-    borrow::BorrowMut,
-    f32::consts::{FRAC_PI_2, PI},
-};
-
-use super::{helper::FlexColumn, MenuRoot};
+use bevy::prelude::*;
+use std::f32::consts::{FRAC_PI_2, PI};
 
 #[derive(Resource, Default)]
 pub struct Panorama {
@@ -39,7 +32,6 @@ pub fn load_panoramic_images(mut panorama: ResMut<Panorama>, assets: Res<AssetSe
 pub fn draw_panoramic_background(
     panorama: Res<Panorama>,
     mut meshes: ResMut<Assets<Mesh>>,
-    assets: Res<AssetServer>,
     mut commands: Commands,
     mut materials: ResMut<Assets<BlurMaterial>>,
     mut query: Query<(&mut Transform, Entity), With<MainCamera>>,
@@ -92,17 +84,13 @@ pub fn draw_panoramic_background(
 
         commands.spawn((
             PanoramaFace,
-            MaterialMeshBundle {
-                mesh: skybox.clone(),
-                material,
-                transform: Transform {
-                    translation: direction * (SKYBOX_SIZE / 2.0),
-                    rotation: angle,
-                    scale: Vec3::splat(-1.0),
-                    ..default()
-                },
-                ..default()
+            Transform {
+                translation: direction * (SKYBOX_SIZE / 2.0),
+                rotation: angle,
+                scale: Vec3::splat(-1.0),
             },
+            MeshMaterial3d(material.clone()),
+            Mesh3d(skybox.clone()),
         ));
     }
 
@@ -118,14 +106,14 @@ pub const BLUR_HIGH: i32 = 6;
 /// Set the panorama blur to N
 pub fn set_panorama_blur<const N: i32>(
     mut materials: ResMut<Assets<BlurMaterial>>,
-    mut query: Query<&mut Handle<BlurMaterial>, With<PanoramaFace>>,
+    mut query: Query<&mut MeshMaterial3d<BlurMaterial>, With<PanoramaFace>>,
 ) {
     for mut material in &mut query {
         if let Some(mat) = materials.get(material.id()) {
             let color_texture = mat.color_texture.clone();
             let alpha_mode = mat.alpha_mode.clone();
 
-            *material = materials.add(BlurMaterial {
+            material.0 = materials.add(BlurMaterial {
                 blur_strength: N,
                 color_texture,
                 alpha_mode,
@@ -149,14 +137,11 @@ pub fn spawn_select_menu_root<FTop, FCenter, FBottom>(
     commands
         .spawn((
             MenuRoot,
-            NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(100.0),
-                    display: Display::Flex,
-                    flex_direction: FlexDirection::Column,
-                    ..default()  
-                },
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                display: Display::Flex,
+                flex_direction: FlexDirection::Column,
                 ..default()
             },
         ))
@@ -165,80 +150,67 @@ pub fn spawn_select_menu_root<FTop, FCenter, FBottom>(
             root.spawn(node(Val::Percent(100.0), Val::Percent(15.0)))
                 .with_children(|parent| {
                     parent
-                        .spawn(
-                            Style {
-                                width: MENU_CONTENT_WIDTH,
-                                max_width: MAX_MENU_CONTENT_WIDTH,
-                                height: Val::Percent(100.0),
-                                display: Display::Flex,
-                                flex_direction: FlexDirection::Column,
-                                align_items: AlignItems::Center,
-                                justify_content: JustifyContent::Center,
-                                margin: UiRect::horizontal(Val::Auto),
-                                ..default()
-                            }
-                            .node(),
-                        )
+                        .spawn(Node {
+                            width: MENU_CONTENT_WIDTH,
+                            max_width: MAX_MENU_CONTENT_WIDTH,
+                            height: Val::Percent(100.0),
+                            display: Display::Flex,
+                            flex_direction: FlexDirection::Column,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::Center,
+                            margin: UiRect::horizontal(Val::Auto),
+                            ..default()
+                        })
                         .with_children(top);
                 });
 
             // central panel, with darkened content and border.
-            root.spawn(NodeBundle {
-                style: Style {
+            root.spawn((
+                Node {
                     width: Val::Percent(100.0),
                     height: Val::Percent(65.0),
                     border: UiRect::axes(Val::Px(0.0), Val::Px(2.0)),
                     ..default()
                 },
-                background_color: BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
-                border_color: BorderColor(Color::srgba(1.0, 1.0, 1.0, 0.3)),
-                ..default()
-            })
+                BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+                BorderColor(Color::srgba(1.0, 1.0, 1.0, 0.3)),
+            ))
             .with_children(|parent| {
                 parent
-                    .spawn(
-                        Style {
-                            width: MENU_CONTENT_WIDTH,
-                            max_width: MAX_MENU_CONTENT_WIDTH,
-                            height: Val::Percent(100.0),
-                            display: Display::Flex,
-                            flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Center,
-                            justify_content: JustifyContent::Center,
-                            margin: UiRect::horizontal(Val::Auto),
-                            ..default()
-                        }
-                        .node(),
-                    )
+                    .spawn(Node {
+                        width: MENU_CONTENT_WIDTH,
+                        max_width: MAX_MENU_CONTENT_WIDTH,
+                        height: Val::Percent(100.0),
+                        display: Display::Flex,
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        margin: UiRect::horizontal(Val::Auto),
+                        ..default()
+                    })
                     .with_children(center);
             });
 
             // bottom panel
-            root.spawn(NodeBundle {
-                style: Style {
-                    width: Val::Percent(100.0),
-                    height: Val::Percent(20.0),
-                    ..default()
-                },
+            root.spawn(Node {
+                width: Val::Percent(100.0),
+                height: Val::Percent(20.0),
                 ..default()
             })
             .with_children(|parent| {
                 parent
-                    .spawn(
-                        Style {
-                            width: MENU_CONTENT_WIDTH,
-                            max_width: MAX_MENU_CONTENT_WIDTH,
-                            height: Val::Percent(100.0),
-                            display: Display::Flex,
-                            flex_direction: FlexDirection::Column,
-                            align_items: AlignItems::Center,
-                            justify_content: JustifyContent::Center,
-                            margin: UiRect::horizontal(Val::Auto),
-                            row_gap: Val::Px(10.0),
-                            ..default()
-                        }
-                        .node(),
-                    )
+                    .spawn(Node {
+                        width: MENU_CONTENT_WIDTH,
+                        max_width: MAX_MENU_CONTENT_WIDTH,
+                        height: Val::Percent(100.0),
+                        display: Display::Flex,
+                        flex_direction: FlexDirection::Column,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        margin: UiRect::horizontal(Val::Auto),
+                        row_gap: Val::Px(10.0),
+                        ..default()
+                    })
                     .with_children(bottom);
             });
         });

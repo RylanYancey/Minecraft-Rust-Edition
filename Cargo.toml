@@ -1,6 +1,15 @@
 
 [workspace]
+resolver = "2"
 members = [
   "client",
   "simulation"
 ]
+
+[workspace.dependencies]
+bevy = "0.15.0"
+bevy_easings = "0.15.0"
+log = "0.4.22"
+rayon = "1.10.0"
+rand = "0.8.4"
+rand_pcg = "0.3.1"

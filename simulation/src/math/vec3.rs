@@ -98,6 +98,32 @@ impl<T: One + Zero + Neg<Output=T>> Vec3<T> {
     }
 }
 
+impl Vec3<f32> {
+    pub fn floor(self) -> Self {
+        Self(
+            self.0.floor(),
+            self.1.floor(),
+            self.2.floor()
+        )
+    }
+
+    pub fn fract(self) -> Self {
+        Self(
+            self.0.fract(),
+            self.1.fract(),
+            self.2.fract()
+        )
+    }
+
+    pub fn distance(self, rhs: Self) -> f32 {
+        f32::sqrt(
+            (self.0 - rhs.0).powi(2) + 
+            (self.1 - rhs.1).powi(2) + 
+            (self.2 - rhs.2).powi(2)
+        )
+    }
+}
+
 impl<T: Neg<Output=T>> Neg for Vec3<T> {
     type Output = Self;
 
@@ -134,6 +160,22 @@ macro_rules! impl_assign_ops {
     }
 }
 
+macro_rules! impl_ops_by_primitives {
+    ($op_trait: tt, $op_fn: ident, $op: tt) => {
+        impl<T: $op_trait<Output=T> + Copy> $op_trait<T> for Vec3<T> {
+            type Output = Self;
+
+            fn $op_fn(self, rhs: T) -> Self {
+                Self(
+                    self.0 $op rhs,
+                    self.1 $op rhs,
+                    self.2 $op rhs
+                )
+            }
+        }
+    }
+}
+
 impl_ops!(Add, add, +);
 impl_ops!(Sub, sub, -);
 impl_ops!(Mul, mul, *);
@@ -151,3 +193,12 @@ impl_assign_ops!(RemAssign, rem_assign, %=);
 impl_assign_ops!(BitAndAssign, bitand_assign, &=);
 impl_assign_ops!(BitOrAssign, bitor_assign, |=);
 impl_assign_ops!(BitXorAssign, bitxor_assign, ^=);
+
+impl_ops_by_primitives!(Add, add, +);
+impl_ops_by_primitives!(Sub, sub, -);
+impl_ops_by_primitives!(Mul, mul, *);
+impl_ops_by_primitives!(Div, div, /);
+impl_ops_by_primitives!(Rem, rem, %);
+impl_ops_by_primitives!(BitAnd, bitand, &);
+impl_ops_by_primitives!(BitOr, bitor, |);
+impl_ops_by_primitives!(BitXor, bitxor, ^);

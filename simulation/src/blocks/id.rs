@@ -1,6 +1,8 @@
 
 use xxhash_rust::xxh32::xxh32;
 
+use crate::data::id::Id;
+
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Debug)]
 pub struct BlockID(pub u32);
 
@@ -11,8 +13,14 @@ impl BlockID {
         Self(id)
     }
 
-    pub fn id(&self) -> &u32 {
-        &self.0
+    pub fn id(&self) -> u32 {
+        self.0
+    }
+}
+
+impl From<Id> for BlockID {
+    fn from(value: Id) -> Self {
+        Self(value.id())
     }
 }
 

@@ -5,4 +5,4 @@ use crate::data::Tag;
 /// 
 /// TODO: determine what this means for burnable half-blocks
 /// like slabs and fences.
-pub const BURNABLE: Tag = Tag::new("burnable");
+pub const BURNABLE: Tag = Tag::new("minecraft:burnable");

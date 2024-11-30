@@ -6,72 +6,62 @@ use crate::math::Dir;
 /// the boolean indicates whether or not the
 /// block is transparent. 
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct Faces([(Face, bool); 6]);
+pub struct Faces([Face; 6]);
 
 impl Faces {
-    pub fn all(face: Face, transparent: bool) -> Self {
-        Self([(face, transparent); 6])
+    pub fn all(face: Face) -> Self {
+        Self([face; 6])
     }
 
-    pub fn full() -> Self {
-        Self([(Face::Full, false); 6])
-    }
-
-    pub fn air() -> Self {
-        Self::default()
-    }
-
-    pub fn with(mut self, dir: Dir, face: Face, transparency: bool) -> Self {
-        self.0[dir.to_index()] = (face, transparency);
+    pub fn with(mut self, dir: Dir, face: Face) -> Self {
+        self.0[dir.to_index()] = face;
         self
+    }
+
+    pub fn set(&mut self, dir: Dir, face: Face) {
+        self.0[dir.to_index()] = face;
     }
 
     /// Get the face in the specified direction.
     /// The boolean returned indicates whether or
     /// not the face is transparent.
-    pub fn get(&self, dir: Dir) -> (Face, bool) {
+    pub fn get(&self, dir: Dir) -> Face {
         self.0[dir.to_index()]
     }
 
-    pub fn up(&self) -> (Face, bool) {
+    pub fn up(&self) -> Face {
         self.0[Dir::Up.to_index()]
     }
 
-    pub fn down(&self) -> (Face, bool) {
+    pub fn down(&self) -> Face {
         self.0[Dir::Down.to_index()]
     }
 
-    pub fn east(&self) -> (Face, bool) {
+    pub fn east(&self) -> Face {
         self.0[Dir::East.to_index()]
     }
 
-    pub fn west(&self) -> (Face, bool) {
+    pub fn west(&self) -> Face {
         self.0[Dir::West.to_index()]
     }
 
-    pub fn north(&self) -> (Face, bool) {
+    pub fn north(&self) -> Face {
         self.0[Dir::North.to_index()]
     }
 
-    pub fn south(&self) -> (Face, bool) {
+    pub fn south(&self) -> Face {
         self.0[Dir::South.to_index()]
     }
 }
 
-impl From<(Face, bool)> for Faces {
-    fn from(value: (Face, bool)) -> Self {
-        Self([value; 6])
-    }
-}
-
-impl Default for Faces {
-    fn default() -> Self {
-        Self([(Face::None, false); 6])
-    }
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Face {
+    pub opacity: bool,
+    pub coverage: FaceCoverage,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum Face {
+pub enum FaceCoverage {
     //// The face exists and takes up
     /// 100% of the face space.
     /// 
@@ -212,3 +202,4 @@ pub enum FaceRotation {
     Deg180,
     Deg270,
 }
+

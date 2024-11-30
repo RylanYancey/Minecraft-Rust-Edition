@@ -1,11 +1,25 @@
 
+use std::slice::Iter;
+
 use crate::blocks::{BlockID, BlockState, Light};
 
 use super::*;
 
 pub struct Chunk {
+    /// The corodinates of the negative most
+    /// block within the chunk.
     origin: Vec2<i32>,
+
+    /// Subchunks, from bottom to top.
     subchunks: Vec<Box<SubChunk>>,
+
+    /// Light Emitters within the chunk.
+    emitters: Vec<Vec3<i32>>,
+
+    /// Indicates whether or not the
+    /// chunk is unloaded, loaded,
+    /// rendered, or simulated.
+    state: ChunkState,
 }
 
 impl Chunk {
@@ -16,6 +30,10 @@ impl Chunk {
     /// Index the internal subchunks vector.
     pub fn index(&self, index: usize) -> Option<&SubChunk> {
         self.subchunks.get(index).map(|v| &**v)
+    }
+
+    pub fn index_mut(&mut self, index: usize) -> Option<&mut SubChunk> {
+        self.subchunks.get_mut(index).map(|v| &mut**v)
     }
 
     /// get the height of the subchunks that are
@@ -35,9 +53,25 @@ impl Chunk {
             None
         }
     }
+
+    pub fn state(&self) -> &ChunkState {
+        &self.state
+    }
+
+    pub fn is_simulated(&self) -> bool {
+        self.state == ChunkState::Simulated
+    }
+
+    pub fn iter_subchunks(&self) -> impl DoubleEndedIterator<Item=&SubChunk> {
+        self.subchunks.iter().map(|map| &**map)
+    }
+
+    pub fn iter_subchunks_mut(&mut self) -> impl DoubleEndedIterator<Item=&mut SubChunk> {
+        self.subchunks.iter_mut().map(|map| &mut**map)
+    }
 }
 
-pub static EMPTY_SUBCHUNK: SubChunk = SubChunk {
+pub static mut EMPTY_SUBCHUNK: SubChunk = SubChunk {
     origin: Vec3(512 * 1000000, 0, 512 * 1000000),
     blocks: [BlockState { block: BlockID::AIR, light: Light::default()}; 4096]
 };
@@ -63,6 +97,10 @@ impl SubChunk {
 
     pub fn as_slice(&self) -> &[BlockState; 4096] {
         &self.blocks
+    }
+
+    pub fn as_slice_mut(&mut self) -> &mut [BlockState; 4096] {
+        &mut self.blocks
     }
 
     /// Returns an iterator over the blocks in the subchunk.
@@ -205,4 +243,12 @@ impl<'b> DoubleEndedIterator for Column<'b> {
             Some(result)
         }
     }
+}
+
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub enum ChunkState {
+    Unloaded,
+    Loaded,
+    Rendered,
+    Simulated
 }

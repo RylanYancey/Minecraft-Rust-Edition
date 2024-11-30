@@ -1,5 +1,10 @@
-
-use bevy::{prelude::*, render::{render_graph::RenderGraph, render_resource::{AsBindGroup, ShaderModule, ShaderRef}}};
+use bevy::{
+    prelude::*,
+    render::{
+        render_graph::RenderGraph,
+        render_resource::{AsBindGroup, ShaderModule, ShaderRef},
+    },
+};
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]
 pub struct BlurMaterial {
@@ -8,7 +13,7 @@ pub struct BlurMaterial {
     #[texture(1)]
     #[sampler(2)]
     pub color_texture: Handle<Image>,
-    pub alpha_mode: AlphaMode
+    pub alpha_mode: AlphaMode,
 }
 
 impl Default for BlurMaterial {
@@ -16,7 +21,7 @@ impl Default for BlurMaterial {
         Self {
             blur_strength: 2,
             color_texture: Handle::default(),
-            alpha_mode: AlphaMode::default()
+            alpha_mode: AlphaMode::default(),
         }
     }
 }
@@ -30,5 +35,3 @@ impl Material for BlurMaterial {
         self.alpha_mode
     }
 }
-
-

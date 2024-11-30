@@ -1,22 +1,23 @@
-
 #![feature(variant_count)]
 
 use audio::UiSounds;
 pub use bevy::prelude::*;
 use bevy::{
-    core::FrameCount, diagnostic::FrameTimeDiagnosticsPlugin, window::{PresentMode, WindowTheme}
+    core::FrameCount,
+    diagnostic::FrameTimeDiagnosticsPlugin,
+    window::{PresentMode, WindowTheme},
 };
 use camera::spawn_camera;
 pub use state::GameState;
 
-pub mod camera;
-pub mod state;
-pub mod ui;
 pub mod audio;
-pub mod util;
+pub mod camera;
+pub mod diagnostic;
 pub mod lang;
 pub mod loading;
-pub mod diagnostic;
+pub mod state;
+pub mod ui;
+pub mod util;
 
 fn main() {
     App::new()
@@ -45,7 +46,10 @@ fn main() {
         .init_state::<GameState>()
         .init_resource::<audio::UiSounds>()
         .init_resource::<lang::Locale>()
-        .add_systems(Startup, (spawn_camera, audio::load_ui_sounds, lang::load_locale))
+        .add_systems(
+            Startup,
+            (spawn_camera, audio::load_ui_sounds, lang::load_locale),
+        )
         .add_systems(Update, make_visible)
         .run();
 }

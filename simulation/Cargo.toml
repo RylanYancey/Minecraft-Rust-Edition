@@ -4,5 +4,11 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-bevy_ecs = "0.14.2"
+bevy.workspace = true
+log.workspace = true
+rayon.workspace = true
+rand.workspace = true
+rand_pcg.workspace = true
+boomphf = "0.6.0"
+libnoise = "1.1.2"
 xxhash-rust = { version = "0.8.12", features = ["xxh32", "const_xxh32"] }

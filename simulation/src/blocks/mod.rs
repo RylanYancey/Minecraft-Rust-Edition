@@ -1,12 +1,15 @@
 
 // imports 
 use crate::{data::TagSet, math::collider::BoundingBox};
+use bevy::color::Color;
 
 // exports
 pub use id::BlockID;
 pub use light::Light;
 pub use state::BlockState;
 pub use face::{Faces, Face, FaceRotation, Pixels};
+pub use collider::BlockCollider;
+
 
 // module declarations
 mod id;
@@ -14,6 +17,7 @@ mod light;
 mod state;
 mod face;
 mod tag;
+mod collider;
 
 pub struct Block {
     /// Description of the faces in a block,
@@ -25,15 +29,11 @@ pub struct Block {
     /// behaviour globally.
     pub tags: TagSet,
 
-    /// A set of colliders, and whether or not they
-    /// can be moved through.
-    /// 
-    /// I chose to allow multiple colliders because
-    /// blocks like Honey have a non-collidable collider
-    /// for detecting if the player should be slowed down,
-    /// and a collidable collider 1px inset. 
-    /// 
-    /// The bool indicates whether or not the collider
-    /// can be moved through by entities.
-    pub colliders: Vec<(BoundingBox, bool)>,
+    /// The set of collision boxes that
+    /// describe movement through or around
+    /// the block.
+    pub colliders: Vec<BlockCollider>,
+
+    /// Whether or not the block emits light.
+    pub emits_light: Option<Color>,
 }

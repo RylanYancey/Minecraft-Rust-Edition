@@ -5,10 +5,6 @@ pub struct UiSounds {
     pub click: Handle<AudioSource>,
 }
 
-pub fn load_ui_sounds(
-    mut sounds: ResMut<UiSounds>,
-    assets: Res<AssetServer>
-) {
+pub fn load_ui_sounds(mut sounds: ResMut<UiSounds>, assets: Res<AssetServer>) {
     sounds.click = assets.load("sounds/ui/click.ogg");
 }
-

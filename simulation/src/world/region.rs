@@ -21,7 +21,20 @@ impl Region {
         &self.chunks[z][x]
     }
 
+    pub fn index_mut(&mut self, x: usize, z: usize) -> &mut Chunk {
+        &mut self.chunks[z][x]
+    }
+
     pub fn id(&self) -> i64 {
         self.origin.to_i64()
     }
+
+    pub fn iter_chunks(&self) -> impl Iterator<Item=&Chunk> {
+        self.chunks.iter().flat_map(|map| map.iter())
+    }
+
+    pub fn iter_chunks_mut(&mut self) -> impl Iterator<Item=&mut Chunk> {
+        self.chunks.iter_mut().flat_map(|map| map.iter_mut())
+    }
 }
+

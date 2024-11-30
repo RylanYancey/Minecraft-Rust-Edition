@@ -3,12 +3,19 @@ name = "client"
 version = "0.1.0"
 edition = "2021"
 
+[profile.dev]
+opt-level = 1
+
+# builds dependencies at a high optimization level.
+[profile.dev.package."*"]
+opt-level = 3
+
 [dependencies]
-bevy = "0.14.2"
-bevy_easings = "0.14.0"
-bevy_simple_text_input = "0.9.2"
-iyes_perf_ui = "0.3.0"
-log = "0.4.22"
+bevy.workspace = true
+bevy_easings.workspace = true
+log.workspace = true
+bevy_simple_text_input = "0.10.0"
+iyes_perf_ui.git = "https://github.com/IyesGames/iyes_perf_ui.git"
 serde = { version = "1.0.215", features = ["derive"] }
 serde_json = "1.0.133"
 walkdir = "2.5.0"

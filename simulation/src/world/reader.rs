@@ -17,7 +17,7 @@ pub struct WorldReader<'w> {
 impl<'w> WorldReader<'w> {
     pub fn new(world: &'w World) -> Self {
         Self {
-            world, last: Cell::new(&EMPTY_SUBCHUNK)
+            world, last: Cell::new(unsafe {&EMPTY_SUBCHUNK})
         }
     }
 

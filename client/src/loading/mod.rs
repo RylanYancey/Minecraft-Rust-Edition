@@ -6,8 +6,8 @@ use bevy::{
 };
 
 pub mod game;
-pub mod ready;
 pub mod loader;
+pub mod ready;
 
 use game::GameLoader;
 use ready::PipelinesReady;
@@ -25,15 +25,12 @@ impl Plugin for MinecraftLoadingPlugin {
             // to detect when that occurs.
             .init_resource::<PipelinesReady>()
             .sub_app_mut(bevy::render::RenderApp) // im not 100% on what this does
-                .add_systems(ExtractSchedule, ready::update_pipelines_ready)
-
-        ;
+            .add_systems(ExtractSchedule, ready::update_pipelines_ready);
 
         app
             // Systems for game asset loading and the main loading screen.
             .init_resource::<GameLoader>()
             .add_systems(Startup, game::add_game_load_stages)
-            .add_systems(Update, game::game_loading_handler)
-        ;
+            .add_systems(Update, game::game_loading_handler);
     }
 }

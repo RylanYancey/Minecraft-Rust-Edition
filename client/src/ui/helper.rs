@@ -3,9 +3,9 @@
 use bevy::prelude::*;
 
 // create a ui image with the texture.
-pub fn ui_image(image: Handle<Image>) -> UiImage {
-    UiImage {
-        texture: image,
+pub fn ui_image(image: Handle<Image>) -> ImageNode {
+    ImageNode {
+        image,
         color: Color::WHITE,
         ..default()
     }
@@ -13,38 +13,34 @@ pub fn ui_image(image: Handle<Image>) -> UiImage {
 
 /// Text with a shadow, used for ui text.
 pub fn shadow_text(parent: &mut ChildBuilder, font: &Handle<Font>, text: &str, size: f32) {
-    parent.spawn(TextBundle {
-        z_index: ZIndex::Local(26),
-        text: Text::from_section(
-            text,
-            TextStyle {
-                font: font.clone(),
-                font_size: size,
-                color: Color::WHITE,
-            },
-        ),
-        ..default()
-    });
+    parent.spawn((
+        ZIndex(26),
+        Text::new(text),
+        TextFont {
+            font: font.clone(),
+            font_size: size,
+            ..default()
+        },
+        TextColor(Color::WHITE),
+    ));
 
-    parent.spawn(TextBundle {
-        style: Style {
+    parent.spawn((
+        Node {
             position_type: PositionType::Absolute,
             left: Val::Px(4.0),
             top: Val::Px(4.0),
             margin: UiRect::all(Val::Auto),
             ..default()
         },
-        z_index: ZIndex::Local(25),
-        text: Text::from_section(
-            text,
-            TextStyle {
-                font: font.clone(),
-                font_size: size,
-                color: Color::srgba(0.1, 0.1, 0.1, 0.5),
-            },
-        ),
-        ..default()
-    });
+        ZIndex(25),
+        Text::new(text),
+        TextFont {
+            font: font.clone(),
+            font_size: size,
+            ..default()
+        },
+        TextColor(Color::srgba(0.1, 0.1, 0.1, 0.5)),
+    ));
 }
 
 /// Helper struct for creating node bundles
@@ -58,22 +54,19 @@ pub struct FlexColumn {
 }
 
 impl FlexColumn {
-    pub fn node(self) -> NodeBundle {
+    pub fn node(self) -> Node {
         self.into()
     }
 }
 
-impl Into<NodeBundle> for FlexColumn {
-    fn into(self) -> NodeBundle {
-        NodeBundle {
-            style: Style {
-                width: self.width,
-                height: self.height,
-                margin: self.margin,
-                justify_content: self.justify,
-                align_items: self.align,
-                ..default()
-            },
+impl Into<Node> for FlexColumn {
+    fn into(self) -> Node {
+        Node {
+            width: self.width,
+            height: self.height,
+            margin: self.margin,
+            justify_content: self.justify,
+            align_items: self.align,
             ..default()
         }
     }
@@ -92,30 +85,10 @@ impl Default for FlexColumn {
 }
 
 // a very basic node with a width and height
-pub fn node(width: Val, height: Val) -> NodeBundle {
-    NodeBundle {
-        style: Style {
-            width,
-            height,
-            ..default()
-        },
+pub fn node(width: Val, height: Val) -> Node {
+    Node {
+        width,
+        height,
         ..default()
-    }
-}
-
-// We end up spawning alot of nodes,
-// but only actually set the style,
-// soooo this is a helper function
-// to convert a style to a nodebundle.
-pub trait NodeBundleExt {
-    fn node(self) -> NodeBundle;
-}
-
-impl NodeBundleExt for Style {
-    fn node(self) -> NodeBundle {
-        NodeBundle {
-            style: self,
-            ..default()
-        }
     }
 }
