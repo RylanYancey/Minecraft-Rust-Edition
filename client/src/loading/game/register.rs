@@ -1,4 +1,4 @@
-use bevy::{ecs::schedule::ScheduleLabel, prelude::*};
+use bevy::ecs::schedule::ScheduleLabel;
 
 #[derive(ScheduleLabel, Clone, Debug, Hash, Eq, PartialEq)]
 pub struct LoadDescriptorSets;

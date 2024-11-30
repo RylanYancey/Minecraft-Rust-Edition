@@ -1,4 +1,3 @@
-use std::any::Any;
 
 use super::{loader::Loader, ready::PipelinesReady};
 use crate::{
@@ -6,7 +5,7 @@ use crate::{
         loading::{LoadHintText, LoadScreenRoot, LoadingBar},
         MenuState,
     },
-    util::{fade::FadeOut, timer::DespawnTimer},
+    util::timer::DespawnTimer,
 };
 use bevy::{core::FrameCount, ecs::system::SystemState, prelude::*};
 use computed::ComputeDynamicEntries;

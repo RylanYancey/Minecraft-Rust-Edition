@@ -1,11 +1,9 @@
 #![feature(variant_count)]
 
-use audio::UiSounds;
 pub use bevy::prelude::*;
 use bevy::{
     core::FrameCount,
-    diagnostic::FrameTimeDiagnosticsPlugin,
-    window::{PresentMode, WindowTheme},
+    window::PresentMode,
 };
 use camera::spawn_camera;
 pub use state::GameState;

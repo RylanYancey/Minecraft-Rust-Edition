@@ -3,7 +3,6 @@ use bevy::{
         EntityCountDiagnosticsPlugin, FrameTimeDiagnosticsPlugin,
         SystemInformationDiagnosticsPlugin,
     },
-    input::keyboard::KeyboardInput,
     prelude::*,
 };
 use iyes_perf_ui::prelude::*;

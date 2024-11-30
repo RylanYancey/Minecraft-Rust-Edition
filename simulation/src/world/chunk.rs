@@ -71,7 +71,7 @@ impl Chunk {
     }
 }
 
-pub static mut EMPTY_SUBCHUNK: SubChunk = SubChunk {
+pub static EMPTY_SUBCHUNK: SubChunk = SubChunk {
     origin: Vec3(512 * 1000000, 0, 512 * 1000000),
     blocks: [BlockState { block: BlockID::AIR, light: Light::default()}; 4096]
 };

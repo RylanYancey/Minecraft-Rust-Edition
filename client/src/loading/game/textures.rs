@@ -1,4 +1,4 @@
-use bevy::{ecs::schedule::ScheduleLabel, prelude::*};
+use bevy::ecs::schedule::ScheduleLabel;
 
 #[derive(ScheduleLabel, Hash, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LoadTextureFiles;

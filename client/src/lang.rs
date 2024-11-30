@@ -17,7 +17,7 @@ impl Locale {
         self.lang = lang.to_string();
 
         for source in &self.sources {
-            let langfile = source.join(lang).with_extension(".json");
+            let langfile = source.join(lang).with_extension("json");
             if let Ok(src) = fs::read_to_string(&langfile) {
                 match serde_json::from_str::<HashMap<String, String>>(&*src) {
                     Ok(map) => self.map.extend(map.into_iter()),

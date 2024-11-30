@@ -1,9 +1,6 @@
 use bevy::{
     prelude::*,
-    render::{
-        render_graph::RenderGraph,
-        render_resource::{AsBindGroup, ShaderModule, ShaderRef},
-    },
+    render::render_resource::{AsBindGroup, ShaderRef},
 };
 
 #[derive(Asset, TypePath, AsBindGroup, Debug, Clone)]

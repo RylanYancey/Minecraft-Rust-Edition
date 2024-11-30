@@ -20,6 +20,7 @@ impl Plugin for MinecraftUiPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<MenuState>()
             .init_resource::<backgrounds::Panorama>()
+            .init_resource::<scale::UiScale>()
             .add_plugins(TextInputPlugin)
             .add_systems(
                 Update,

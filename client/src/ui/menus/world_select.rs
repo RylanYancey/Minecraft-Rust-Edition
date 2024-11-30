@@ -1,4 +1,3 @@
-use std::borrow::Borrow;
 
 use bevy::prelude::*;
 
@@ -7,12 +6,10 @@ use crate::{
     ui::{
         backgrounds::spawn_select_menu_root,
         button::{spawn_menu_button, MenuButtonAction, FONT},
-        helper::{node, shadow_text},
     },
     util::toggle::Toggled,
 };
-use bevy_simple_text_input::TextInputSettings;
-use bevy_simple_text_input::{TextInput, TextInputSubmitEvent, TextInputTextFont};
+use bevy_simple_text_input::{TextInput, TextInputSubmitEvent};
 
 use super::MenuState;
 

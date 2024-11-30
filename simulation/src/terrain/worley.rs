@@ -6,7 +6,7 @@ pub struct Worley2x3;
 
 impl Generator<[f32; 3]> for Worley2x3 {
     fn sample(&self, pos: Vec3<i32>, fbm: &Fbm, perm: &Permutation) -> [f32; 3] {
-        worley2x3(pos.xz().map_with(&fbm.frequency.xz(), |n, f| *n as f32 * f), perm)
+        worley2x3(pos.xz().map(|n| *n as f32 * fbm.frequency), perm)
     }
 }
 

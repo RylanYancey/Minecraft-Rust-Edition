@@ -1,5 +1,4 @@
 use bevy::{prelude::*, window::WindowResized};
-use bevy_easings::Ease;
 
 #[derive(Component, Copy, Clone)]
 pub struct ScaleableUiWidth(pub f32);

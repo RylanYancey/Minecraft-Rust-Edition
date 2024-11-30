@@ -1,7 +1,7 @@
 use bevy::{
     ecs::{
         intern::Interned,
-        schedule::{NodeId, ScheduleLabel},
+        schedule::ScheduleLabel,
     },
     prelude::*,
 };

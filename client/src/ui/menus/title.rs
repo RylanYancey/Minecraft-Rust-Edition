@@ -1,10 +1,9 @@
-use bevy::{prelude::*, ui::ContentSize};
+use bevy::prelude::*;
 
 use crate::lang::Locale;
 use crate::util::toggle::Toggled;
 
 use super::super::button::*;
-use super::super::helper::*;
 use super::MenuRoot;
 use super::MenuState;
 use super::MAX_MENU_CONTENT_WIDTH;
