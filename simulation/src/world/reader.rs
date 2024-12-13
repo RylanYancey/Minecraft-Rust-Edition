@@ -1,238 +1,584 @@
+use arrayvec::ArrayVec;
+use cached::CACHED_NEIGHBOUR_CHUNK_BOUNDARIES;
+use chunk::{to_origin_local, to_subchunk_index_prewrapped, EMPTY_CHUNK};
 use std::cell::Cell;
-use crate::{blocks::BlockState, math::{Vec3, Vec3I}};
-use super::{chunk::EMPTY_SUBCHUNK, Chunk, SubChunk, World};
 
-#[derive(Clone)]
+use crate::math::Dir;
+
+use super::*;
+
+/// A reader that caches the last
+/// accessed chunk for faster access.
+#[derive(Clone, Debug)]
 pub struct WorldReader<'w> {
-    world: &'w World,
-
-    /// The Last Accessed Subchunk.
-    /// When the world reader is created, 
-    /// this points to EMPTY_SUBCHUNK.
-    last: Cell<&'w SubChunk>,
+    pub world: &'w World,
+    last: Cell<&'w Chunk>,
 }
 
 impl<'w> WorldReader<'w> {
-    pub fn new(world: &'w World) -> Self {
-        Self {
-            world, last: Cell::new(&EMPTY_SUBCHUNK)
+    /// Get the block at this position.
+    pub fn get_block(&self, pos: WorldPos3) -> Option<BlockState> {
+        // the origin of the subchunk containing
+        // the position and the position relative to that origin.
+        let (origin, local) = to_origin_local(pos);
+
+        // if we do not already have the right chunk,
+        // attempt to get it from the world, returning
+        // None if it does not exist.
+        if self.last.get().origin != origin.xz() {
+            self.last
+                .set(self.world.chunks.get(&combine_into_u64(origin.xz()))?);
         }
+
+        let local2 = to_subchunk_index_prewrapped(local);
+
+        // attempt to get the subchunk from the chunk, returning None
+        // if it does not exist. If the subchunk does exist, the block
+        // is guaranteed to exist.
+        Some(self.last.get().get_subchunk(pos.y)?.as_slice()[to_subchunk_index_prewrapped(local)])
     }
 
-    pub fn get_block(&self, at: Vec3<i32>) -> Option<BlockState> {
-        let wrap = at & Vec3::splat(15);
-        let origin = at - wrap;
-        let last = self.last.get();
-        let index = (wrap.y() + wrap.x() * 16 + wrap.z() * 256) as usize;
+    /// Get the chunk containing this position.
+    pub fn get_chunk(&self, pos: WorldPos3) -> Option<&'w Chunk> {
+        // World-space origin of the chunk.
+        let origin = to_chunk_origin(pos.xz());
 
-        if origin == *last.origin() {
-            Some(last.as_slice()[index])
+        // if we do not already have the right chunk, search the world
+        // for it, returning None if it does not exist.
+        if self.last.get().origin != origin {
+            self.last
+                .set(self.world.chunks.get(&combine_into_u64(origin))?);
+        }
+
+        Some(self.last.get())
+    }
+
+    /// Get the subchunk containing this point.
+    pub fn get_subchunk(&self, pos: WorldPos3) -> Option<&'w SubChunk> {
+        self.get_chunk(pos)?.get_subchunk(pos.y)
+    }
+
+    /// If you already have the chunk origin, prefer this over get_chunk.
+    pub fn get_chunk_with_origin(&self, origin: ChunkOrigin) -> Option<&'w Chunk> {
+        if self.last.get().origin != origin {
+            self.last
+                .set(self.world.chunks.get(&combine_into_u64(origin))?)
+        }
+
+        Some(self.last.get())
+    }
+
+    /// If you already have the chunk origin, prefer this over get_chunk.
+    pub fn get_subchunk_with_origin(&self, origin: SubChunkOrigin) -> Option<&'w SubChunk> {
+        self.get_chunk_with_origin(origin.xz())?
+            .get_subchunk(origin.y)
+    }
+
+    /// Select a volume in the world.
+    pub fn volume(&self, origin: IVec3, extent: IVec3) -> Volume<'w> {
+        Volume::new(self.clone(), origin, extent)
+    }
+
+    /// Get the 6 blocks that are neighbours of this block.
+    pub fn neighbours(&self, pos: WorldPos3) -> Neighbours {
+        const W: usize = CHUNK_WIDTH;
+        let (origin, local) = to_origin_local(pos);
+        let index = to_subchunk_index_prewrapped(local);
+        let packed = CACHED_NEIGHBOUR_CHUNK_BOUNDARIES[index];
+        let center = self.get_subchunk_with_origin(origin);
+
+        // in the event that the center is
+        // not on any of the edges, all bocks
+        // are within the same subchunk.
+        if packed == 0 {
+            Neighbours {
+                next: 0,
+                values: if let Some(center) = center {
+                    let center = center.as_slice();
+                    [
+                        center[index + 1],
+                        center[index - 1],
+                        center[index + W],
+                        center[index - W],
+                        center[index + W * W],
+                        center[index - W * W],
+                    ]
+                } else {
+                    [BlockState::default(); 6]
+                },
+            }
         } else {
-            if let Some(subchunk) = self.world.get_subchunk(at) {
-                let block = subchunk.as_slice()[index];
-                self.last.set(subchunk);
-                Some(block)
-            } else {
-                None
+            Neighbours {
+                next: 0,
+                values: {
+                    // remember this is [+y, -y, +x, -x, +z, -z]
+                    let mut values = [BlockState::default(); 6];
+
+                    if let Some(center) = center {
+                        let center = center.as_slice();
+
+                        // x neighbours are in the same subchunk
+                        if packed & 0b000011 == 0 {
+                            values[2] = center[index + W];
+                            values[3] = center[index - W];
+                        // -x is in the prev chunk
+                        } else if packed & 0b000010 == 0 {
+                            values[2] = center[index + W];
+                            values[3] = self
+                                .world
+                                .get_subchunk_with_origin(origin.with_x(origin.x - W as i32))
+                                .map(|sub| sub.as_slice()[index + (W * (W - 1))])
+                                .unwrap_or_default();
+                        // +x is in the next chunk
+                        } else {
+                            values[2] = self
+                                .world
+                                .get_subchunk_with_origin(origin.with_x(origin.x + W as i32))
+                                .map(|sub| sub.as_slice()[index - (W * (W - 1))])
+                                .unwrap_or_default();
+                            values[3] = center[index - W];
+                        }
+
+                        // y neighbours are in the same subchunk
+                        if packed & 0b001100 == 0 {
+                            values[0] = center[index + 1];
+                            values[1] = center[index - 1];
+                        // -y is in the chunk below.
+                        } else if packed & 0b001000 == 0 {
+                            values[0] = center[index + 1];
+                            values[1] = self
+                                .world
+                                .get_subchunk_with_origin(origin.with_y(origin.y - W as i32))
+                                .map(|sub| sub.as_slice()[index + (W - 1)])
+                                .unwrap_or_default();
+                        // +y is in the chunk above
+                        } else {
+                            values[0] = self
+                                .world
+                                .get_subchunk_with_origin(origin.with_y(origin.y + W as i32))
+                                .map(|sub| sub.as_slice()[index - (W - 1)])
+                                .unwrap_or_default();
+                            values[1] = center[index - 1];
+                        }
+
+                        // z neighbours are in the same subchunk
+                        if packed & 0b110000 == 0 {
+                            values[4] = center[index + W * W];
+                            values[5] = center[index - W * W];
+                        // -z is in the previous z chunk
+                        } else if packed & 0b100000 == 0 {
+                            values[4] = center[index + W * W];
+                            values[5] = self
+                                .world
+                                .get_subchunk_with_origin(origin.with_z(origin.z - W as i32))
+                                .map(|sub| sub.as_slice()[index + (W * (W * (W - 1)))])
+                                .unwrap_or_default();
+                        // +z is in the next z chunk
+                        } else {
+                            values[4] = self
+                                .world
+                                .get_subchunk_with_origin(origin.with_z(origin.z + W as i32))
+                                .map(|sub| sub.as_slice()[index - (W * (W * (W - 1)))])
+                                .unwrap_or_default();
+                            values[5] = center[index - W * W];
+                        }
+                    } else {
+                        if packed & 0b000011 != 0 {
+                            if packed & 0b000010 == 0 {
+                                values[3] = self
+                                    .world
+                                    .get_subchunk_with_origin(origin.with_x(origin.x - W as i32))
+                                    .map(|sub| sub.as_slice()[index + (W * (W - 1))])
+                                    .unwrap_or_default();
+                            } else {
+                                values[2] = self
+                                    .world
+                                    .get_subchunk_with_origin(origin.with_x(origin.x + W as i32))
+                                    .map(|sub| sub.as_slice()[index - (W * (W - 1))])
+                                    .unwrap_or_default();
+                            }
+                        }
+
+                        if packed & 0b001100 != 0 {
+                            if packed & 0b001000 == 0 {
+                                values[1] = self
+                                    .world
+                                    .get_subchunk_with_origin(origin.with_y(origin.y - W as i32))
+                                    .map(|sub| sub.as_slice()[index + (W - 1)])
+                                    .unwrap_or_default();
+                            } else {
+                                values[0] = self
+                                    .world
+                                    .get_subchunk_with_origin(origin.with_y(origin.y + W as i32))
+                                    .map(|sub| sub.as_slice()[index - (W - 1)])
+                                    .unwrap_or_default();
+                            }
+                        }
+
+                        if packed & 0b110000 != 0 {
+                            if packed & 0b100000 == 0 {
+                                values[5] = self
+                                    .world
+                                    .get_subchunk_with_origin(origin.with_z(origin.z - W as i32))
+                                    .map(|sub| sub.as_slice()[index + (W * (W * (W - 1)))])
+                                    .unwrap_or_default();
+                            } else {
+                                values[4] = self
+                                    .world
+                                    .get_subchunk_with_origin(origin.with_z(origin.z + W as i32))
+                                    .map(|sub| sub.as_slice()[index - (W * (W * (W - 1)))])
+                                    .unwrap_or_default();
+                            }
+                        }
+                    }
+
+                    values
+                },
+            }
+        }
+    }
+}
+
+impl<'w> From<&'w World> for WorldReader<'w> {
+    fn from(value: &'w World) -> Self {
+        Self {
+            world: value,
+            last: Cell::new(&EMPTY_CHUNK),
+        }
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct Neighbours {
+    /// Always in the order of
+    /// UP, DOWN, EAST, WEST, NORTH, SOUTH
+    values: [BlockState; 6],
+    next: usize,
+}
+
+impl Neighbours {
+    const DIRS: [Dir; 6] = [
+        Dir::Up,
+        Dir::Down,
+        Dir::East,
+        Dir::West,
+        Dir::North,
+        Dir::South,
+    ];
+}
+
+impl Iterator for Neighbours {
+    type Item = (Dir, BlockState);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.next == 6 {
+            None
+        } else {
+            let result = Some((Self::DIRS[self.next], self.values[self.next]));
+            self.next += 1;
+            result
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{blocks::Light, data::registry::LocalID};
+
+    use super::util::*;
+    use super::*;
+
+    #[test]
+    fn read_blocks() {
+        let world = world_for_testing();
+        let reader = world.reader();
+        assert_eq!(
+            Some(BlockState {
+                block: LocalID::new(0),
+                light: Light::new(0, 0, 0, 0)
+            }),
+            reader.get_block(IVec3::splat(0))
+        );
+        assert_eq!(
+            Some(BlockState {
+                block: LocalID::new(1),
+                light: Light::new(0, 0, 0, 0)
+            }),
+            reader.get_block(IVec3::new(0, 1, 0))
+        );
+        assert_eq!(
+            Some(BlockState {
+                block: LocalID::new(2),
+                light: Light::new(0, 0, 0, 0)
+            }),
+            reader.get_block(IVec3::new(0, 2, 0))
+        );
+        assert_eq!(
+            Some(BlockState {
+                block: LocalID::new(0),
+                light: Light::new(0, 0, 0, 0)
+            }),
+            reader.get_block(IVec3::new(0, CHUNK_WIDTH as i32, 0))
+        );
+    }
+
+    #[test]
+    fn all_blocks() {
+        let world = world_for_testing();
+        let reader = world.reader();
+
+        for z in 0..CHUNK_WIDTH as i32 {
+            for x in 0..CHUNK_WIDTH as i32 {
+                for y in 0..CHUNK_WIDTH as i32 {
+                    let origin = IVec3::new(x, y, z);
+                    let index = y + x * CHUNK_WIDTH as i32 + z * CHUNK_WIDTH as i32 * CHUNK_WIDTH as i32;
+                    assert_eq!(reader.get_block(origin).unwrap().block.index() as usize, index as usize);
+                }
             }
         }
     }
 
-    /// Returns an iterator over a column in the world, 
-    /// returning `None` if the chunk is not in-world.
-    pub fn column(&self, bottom: Vec3<i32>, height: usize) -> Option<Column<'w>> {
-        let index = bottom.xz().map(|n| n & 15);
-        let index = index.x() * 16 + index.z() * 256;
-        
-        Some(Column {
-            chunk: self.world.get_chunk(bottom)?,
-            bottom,
-            height: height as i32,
-            curr: 0,
-            back: height as i32,
-            index: index as usize,
-        })
+    #[test]
+    fn get_subchunks() {
+        let world = world_for_testing();
+        let reader = world.reader();
+        assert_eq!(
+            IVec3::new(0, 0, 0),
+            reader.get_subchunk(IVec3::new(4, 4, 4)).unwrap().origin
+        );
     }
 
-    /// Returns an iterator over the neighbours of a block,
-    /// for a total of 6. Does not include the block at the origin.
-    pub fn neighbours(&self, at: Vec3<i32>) -> Neighbours<'w> {
-        Neighbours {
-            reader: self.clone(),
-            origin: at,
-            curr: 0,
+    #[test]
+    fn get_chunks() {
+        let world = world_for_testing();
+        let reader = world.reader();
+        assert_eq!(
+            IVec2::new(0, 0),
+            reader.get_chunk(IVec3::new(4, 4, 4)).unwrap().origin
+        );
+    }
+
+    #[test]
+    fn corner_neighbours() {
+        let world = world_for_testing();
+        let reader = world.reader();
+
+        // 0 0 0 
+        let origin = IVec3::new(0, 0, 0);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
+        }
+
+        // W W W
+        let origin = IVec3::splat(CHUNK_WIDTH as i32 - 1);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
+        }
+
+        // 0 W 0
+        let origin = IVec3::new(0, CHUNK_WIDTH as i32 - 1, 0);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
+        }
+
+        // 0 W W
+        let origin = IVec3::new(0, CHUNK_WIDTH as i32 - 1, CHUNK_WIDTH as i32 - 1);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
+        }
+
+        // W W 0
+        let origin = IVec3::new(CHUNK_WIDTH as i32 - 1, CHUNK_WIDTH as i32 - 1, 0);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
+        }
+
+        // W 0 W
+        let origin = IVec3::new(CHUNK_WIDTH as i32 - 1, 0, CHUNK_WIDTH as i32 - 1);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
+        }
+
+        // W 0 0 
+        let origin = IVec3::new(CHUNK_WIDTH as i32 - 1, 0, 0);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
+        }
+
+        // 0 0 W
+        let origin = IVec3::new(0, 0, CHUNK_WIDTH as i32 - 1);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
         }
     }
 
-    /// Returns an iterator over ALL neighbours
-    /// of a block, for a total of 26. (3x3x3 area).
-    /// does not include the block at the origin.
-    pub fn cluster(&self, at: Vec3<i32>) -> Cluster<'w> {
-        Cluster {
-            reader: self.clone(),
-            origin: at,
-            curr: 0,
-        }
-    }
-}
+    #[test]
+    fn neighbour_interiors() {
+        let world = world_for_testing();
+        let reader = world.reader();
 
-#[derive(Clone)]
-pub struct Neighbours<'w> {
-    reader: WorldReader<'w>,
-    origin: Vec3<i32>,
-    curr: usize,
-}
-
-impl<'w> Neighbours<'w> {
-    /// Returns Neighbours, but only the items that are in-world.
-    pub fn filter_none(&self) -> impl Iterator<Item=(Vec3<i32>, BlockState)> + use<'w> {
-        self.clone().filter_map(|(v, opt)| opt.map(|b| (v, b)))
-    }
-
-    /// Returns Neighbours, but replaces out-of-world blocks with `BlockState::default()`.
-    pub fn map_default(&self) -> impl Iterator<Item=(Vec3<i32>, BlockState)> + use<'w> {
-        self.clone().map(|(v, opt)| (v, opt.unwrap_or_default()))
-    }
-}
-
-impl<'w> Neighbours<'w> {
-    const NEIGHBOURS: [Vec3<i32>; 6] = [
-        Vec3( 0,  1,  0),
-        Vec3( 0, -1,  0),
-        Vec3( 1,  0,  0),
-        Vec3(-1,  0,  0),
-        Vec3( 0,  0,  1),
-        Vec3( 0,  0, -1)
-    ];
-}
-
-impl<'w> Iterator for Neighbours<'w> {
-    type Item = (Vec3<i32>, Option<BlockState>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.curr == Self::NEIGHBOURS.len() {
-            None
-        } else {
-            let at = self.origin + Self::NEIGHBOURS[self.curr];
-            Some((at, self.reader.get_block(at)))
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct Cluster<'w> {
-    reader: WorldReader<'w>,
-    origin: Vec3<i32>,
-    curr: usize,
-}
-
-impl<'w> Cluster<'w> {
-    const CLUSTER: [Vec3<i32>; 26] = [
-        Vec3(-1, -1, -1),
-        Vec3(-1,  0, -1),
-        Vec3(-1,  1, -1),
-        Vec3( 0, -1, -1),
-        Vec3( 0,  0, -1),
-        Vec3( 0,  1, -1),
-        Vec3( 1, -1, -1),
-        Vec3( 1,  0, -1),
-        Vec3( 1,  1, -1),
-        Vec3(-1, -1,  0),
-        Vec3(-1,  0,  0),
-        Vec3(-1,  1,  0),
-        Vec3( 0, -1,  0),
-        Vec3( 0,  1,  0),
-        Vec3( 1, -1,  0),
-        Vec3( 1,  0,  0),
-        Vec3( 1,  1,  0),
-        Vec3(-1, -1,  1),
-        Vec3(-1,  0,  1),
-        Vec3(-1,  1,  1),
-        Vec3( 0, -1,  1),
-        Vec3( 0,  0,  1),
-        Vec3( 0,  1,  1),
-        Vec3( 1, -1,  1),
-        Vec3( 1,  0,  1),
-        Vec3( 1,  1,  1),
-    ];
-
-    /// Returns Cluster, but only the items that are in-world.
-    pub fn filter_none(&self) -> impl Iterator<Item=(Vec3<i32>, BlockState)> + use<'w> {
-        self.clone().filter_map(|(v, opt)| opt.map(|b| (v, b)))
-    }
-
-    /// Returns Cluster, but replaces out-of-world blocks with `BlockState::default()`.
-    pub fn map_default(&self) -> impl Iterator<Item=(Vec3<i32>, BlockState)> + use<'w> {
-        self.clone().map(|(v, opt)| (v, opt.unwrap_or_default()))
-    }
-}
-
-impl<'w> Iterator for Cluster<'w> {
-    type Item = (Vec3<i32>, Option<BlockState>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.curr == Self::CLUSTER.len() {
-            None
-        } else {
-            let at = self.origin + Self::CLUSTER[self.curr];
-            Some((at, self.reader.get_block(at)))
-        }
-    }
-}
-
-/// An iterator over a column in the world.
-/// By default this iterator runs bottom-up, 
-/// call Column::rev() if you want top-down.
-#[derive(Clone)]
-pub struct Column<'w> {
-    chunk: &'w Chunk,
-    bottom: Vec3<i32>,
-    height: i32,
-    curr: i32,
-    back: i32,
-    index: usize,
-}
-
-impl<'w> Column<'w> {
-    pub fn filter_none(&self) -> impl Iterator<Item=(Vec3<i32>, BlockState)> + use<'w> {
-        self.clone().filter_map(|(v, opt)| opt.map(|b| (v, b)))
-    }
-
-    pub fn map_default(&self) -> impl Iterator<Item=(Vec3<i32>, BlockState)> + use<'w> {
-        self.clone().map(|(v, opt)| (v, opt.unwrap_or_default()))
-    }
-}
-
-impl<'w> Iterator for Column<'w> {
-    type Item = (Vec3<i32>, Option<BlockState>);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.curr == self.height {
-            return None;
+        let origin = IVec3::new(6, 6, 6);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
         }
         
-        let y = self.bottom.y() + self.curr;
-        self.curr += 1;
-        Some((
-            self.bottom.with_y(y),
-            self.chunk.get_subchunk(y)
-                .map(|sub| sub.as_slice()[(y & 15) as usize + self.index])
-        ))
-    }
-}
-
-impl<'w> DoubleEndedIterator for Column<'w> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.back == -1 {
-            return None;
+        let origin = IVec3::new(4, 1, 1);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
         }
 
-        let y = self.bottom.y() + self.back;
-        self.back -= 1;
-        Some((
-            self.bottom.with_y(y),
-            self.chunk.get_subchunk(y)
-                .map(|sub| sub.as_slice()[(y & 15) as usize + self.index])
-        ))
+        let origin = IVec3::new(1, 1, 1);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            );
+        }
+    }
+
+    #[test]
+    fn neighbour_edge() {
+        let world = world_for_testing();
+        let reader = world.reader();
+
+        let origin = IVec3::new(0, 6, 6);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            )
+        }
+        
+        let origin = IVec3::new(6, 6, 0);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            )
+        }
+        
+        let origin = IVec3::new(6, 0, 6);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            )
+        }
+        
+        let origin = IVec3::new(CHUNK_WIDTH as i32 - 1, 6, 6);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            )
+        }
+        
+        let origin = IVec3::new(6, CHUNK_WIDTH as i32 - 1, 6);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            )
+        }
+        
+        let origin = IVec3::new(6, 6, CHUNK_WIDTH as i32 - 1);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            )
+        }
+    }
+
+    #[test]
+    fn neighbour_center_out_of_bounds() {
+        let world = world_for_testing();
+        let reader = world.reader();
+        
+        let origin = IVec3::new(0, -1, 0);
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            )
+        }
+        
+        let origin = IVec3::new(-(CHUNK_WIDTH as i32 + 1), 0, -(CHUNK_WIDTH as i32));
+        for (dir, state) in reader.neighbours(origin) {
+            assert_eq!(
+                reader.get_block(dir + origin).unwrap_or_default().block,
+                state.block,
+                "at: {}", dir + origin
+            )
+        }
+    }
+
+    #[test]
+    fn neighbours_test_all_negative() {
+        let world = world_for_testing();
+        let reader = world.reader();
+
+        for z in 0..CHUNK_WIDTH as i32 {
+            for x in 0..CHUNK_WIDTH as i32 {
+                for y in 0..CHUNK_WIDTH as i32 {
+                    let origin = IVec3::new(x, y, z) + IVec3::new(-(CHUNK_WIDTH as i32), CHUNK_WIDTH as i32, 0);
+                    for (dir, state) in reader.neighbours(origin) {
+                        assert_eq!(
+                            reader.get_block(dir + origin).unwrap_or_default().block,
+                            state.block,
+                            "at: {}", dir + origin
+                        )
+                    }
+                }
+            }
+        }
     }
 }

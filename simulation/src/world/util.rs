@@ -32,7 +32,7 @@ pub fn subchunk_for_testing(origin: IVec3) -> Box<SubChunk> {
         blocks: (0..CHUNK_LEN)
             .map(|i| BlockState {
                 block: LocalID::new(i as u32),
-                light: Light::new(0, 0, 0, 0),
+                light: Light::ZERO,
             })
             .collect::<Vec<_>>()
             .try_into()

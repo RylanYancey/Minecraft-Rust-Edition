@@ -19,10 +19,10 @@ impl<I: 'static> Registry<I> {
     }
 
     pub fn add(&mut self, id: Id, item: I) {
-        let index = self.entries.len() as u32;
+        let index = self.entries.len() as u16;
         self.entries.push(Entry { id, index, item});
         
-        if let Some(existing) = self.map.insert(GlobalID(id.id()), index) {
+        if let Some(existing) = self.map.insert(GlobalID(id.id()), index as u32) {
             log::error!("Inserted entry with name '{}' into registry '{}', but an entry with name '{}' has the same hash '{}'!", 
                 id.name(), self.name, self.entries[existing as usize].id.name(), id.id());    
         } else {
@@ -44,7 +44,7 @@ pub struct Entry<I> {
     id: Id,
 
     /// The Index of the entry in the `entries` vec.
-    index: u32,
+    index: u16,
 
     /// the Item itself.
     item: I,
@@ -108,14 +108,14 @@ impl GlobalID {
 /// on insertion order and is guaranteed
 /// to NOT be consistent across versions.
 #[derive(Copy, Clone, Debug, Hash, PartialEq, Eq, PartialOrd, Ord)]
-pub struct LocalID(u32);
+pub struct LocalID(u16);
 
 impl LocalID {
-    pub const fn new(index: u32) -> Self {
+    pub const fn new(index: u16) -> Self {
         Self(index)
     }
     
-    pub fn index(&self) -> u32 {
+    pub fn index(&self) -> u16 {
         self.0
     }
 }

@@ -17,7 +17,6 @@ mod state;
 mod face;
 mod tag;
 mod collider;
-mod light2;
 
 pub struct Block {
     /// Description of the faces in a block,

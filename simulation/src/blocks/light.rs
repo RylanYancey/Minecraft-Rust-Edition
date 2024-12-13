@@ -1,147 +1,74 @@
-use std::{ops::{Index, IndexMut, Sub, SubAssign}, simd::{cmp::{SimdOrd, SimdPartialEq}, num::SimdUint, Simd}};
-use bevy::prelude::Color;
 
-/// Struct for storing Light data.
-/// 
-/// Lights have 4 Channels:
-///  - Ambient: NOT an alpha channel - this is the ambient light.
-///  - Red: Colored Red Light at the block
-///  - Green: Colored green Light at the block.
-///  - Blue: Colored blue Light at the block.
-///
-/// Channels are in the range [0, 255], _despite_ there 
-/// only being 16 possible light states. This is to allow
-/// a colored light to stay colored even at the fringes.
-/// If you wanted a light to be orange, you would initialize
-/// the light like so:
-///
-/// - orange: Light::new(0, 255, 247, 0)
-///
-/// The green channel is normally 128 for rgb orange,
-/// but here we do 255 - (16 / 2).
-///
-/// This allows us to have 4096 different colors
-/// and 16 different intensities.
-#[derive(Copy, Clone, Eq, PartialEq, Debug, Ord)]
-pub struct Light(Simd<u8, 4>);
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Light(u16);
 
 impl Light {
-    #[inline]
+    pub const ZERO: Self = Self(0);
+
     pub const fn default() -> Self {
-        Self(Simd::from_array([0, 0, 0, 0]))
+        Self(0xF000)
     }
 
-    #[inline]
-    pub const fn new(a: u8, r: u8, g: u8, b: u8) -> Self {
-        Self(Simd::from_array([a, r, g, b]))
+    /// Construct a new Light from raw values.
+    /// - ambient: [0, 15], ambient light level.
+    /// - intensity: [0, 15], torch light level.
+    /// - hue: [0, 15], HSL Hue.
+    /// - lightness: [0, 15], HSL Lightness.
+    pub const fn from_raw(ambient: u8, intensity: u8, hue: u8, lightness: u8) -> Self {
+        assert!(ambient <= 15, "Ambient must be in the range [0,15]!");
+        assert!(intensity <= 15, "Intensity must be in the range [0,15]!");
+        assert!(hue <= 15, "Hue must be in the range [0,15]!");
+        assert!(lightness <= 15, "Lightness must be in the range [0,15]!");
+
+        Self(
+            (ambient as u16)
+            | ((intensity as u16) << 4)
+            | ((hue as u16) << 8)
+            | ((lightness as u16) << 12)
+        )
     }
 
-    /// Construct a new Light from channels (in the range [0,16]).
-    /// The individual channels are: (intensity * 16) + channel.
-    /// Set ambient light to 0.
-    #[inline]
-    pub const fn from_color_intensity(intensity: u8, r: u8, g: u8, b: u8) -> Self {
-        let intensity = 16 * intensity;
-        Self::new(0, r + intensity, g + intensity, b + intensity)
+    /// Get the ambient light level.
+    pub fn ambient(&self) -> u8 {
+        (self.0 & 0xF) as u8
     }
 
-    /// For each channel, return the larger.
-    pub fn max(&self, other: &Self) -> Self {
-        Self(self.0.simd_max(other.0))
+    /// Set the ambient light level.
+    pub fn set_ambient(&mut self, ambient: u8) {
+        assert!(ambient <= 15, "Ambient must be in range [0, 15]");
+        self.0 = (self.0 & !0xF) | (ambient as u16);
     }
 
-    /// For each channel, return the smaller.
-    pub fn min(&self, other: &Self) -> Self {
-        Self(self.0.simd_min(other.0))
+    /// Get the intensity level.
+    pub fn intensity(&self) -> u8 {
+        ((self.0 >> 4) & 0xF) as u8
     }
 
-    /// Compute the value of the maximum channel
-    pub fn max_channel(&self) -> u8 {
-        self.0.reduce_max()
+    /// Set the intensity level.
+    pub fn set_intensity(&mut self, intensity: u8) {
+        assert!(intensity <= 15, "Intensity must be in range [0, 15]");
+        self.0 = (self.0 & !(0xF << 4)) | ((intensity as u16) << 4);
     }
 
-    /// Compute the value of the lowest channel.
-    pub fn min_channel(&self) -> u8 {
-        self.0.reduce_min()
+    /// Get the HSL hue.
+    pub fn hue(&self) -> u8 {
+        ((self.0 >> 8) & 0xF) as u8
     }
 
-    /// Reduce the intensity of this light by 1 step.
-    /// Saturating Sub all channels by 16.
-    pub fn step_down(&self) -> Self {
-        Self(self.0.saturating_sub(Simd::splat(16)))
+    /// Set the HSL hue.
+    pub fn set_hue(&mut self, hue: u8) {
+        assert!(hue <= 15, "Hue must be in range [0, 15]");
+        self.0 = (self.0 & !(0xF << 8)) | ((hue as u16) << 8);
     }
 
-    pub fn as_array(&self) -> &[u8; 4] {
-        self.0.as_array()
+    /// Get the HSL lightness.
+    pub fn lightness(&self) -> u8 {
+        ((self.0 >> 12) & 0xF) as u8
     }
 
-    pub fn as_mut_array(&mut self) -> &mut [u8; 4] {
-        self.0.as_mut_array()
-    }
-
-    pub fn as_simd(&self) -> &Simd<u8, 4> {
-        &self.0
-    }
-
-    pub fn as_mut_simd(&mut self) -> &mut Simd<u8, 4> {
-        &mut self.0
-    }
-
-    pub fn as_u32(&self) -> u32 {
-        u32::from_le_bytes(*self.as_array())
-    }
-
-    /// Get the ambient channel.
-    pub fn a(&self) -> u8 {self[0]}
-    pub fn r(&self) -> u8 {self[1]}
-    pub fn g(&self) -> u8 {self[2]}
-    pub fn b(&self) -> u8 {self[3]}
-
-    /// Set the ambient channel
-    pub fn set_a(&mut self, a: u8) {self[0] = a}
-    pub fn set_r(&mut self, r: u8) {self[1] = r}
-    pub fn set_g(&mut self, g: u8) {self[2] = g}
-    pub fn set_b(&mut self, b: u8) {self[3] = b}
-
-    pub fn with(mut self, channel: usize, value: u8) -> Self {
-        self[channel] = value;
-        self
-    }
-    
-    pub fn with_a(self, a: u8) -> Self {self.with(0, a)}
-    pub fn with_r(self, r: u8) -> Self {self.with(1, r)}
-    pub fn with_g(self, g: u8) -> Self {self.with(2, g)}
-    pub fn with_b(self, b: u8) -> Self {self.with(3, b)}
-
-    pub const AMBIENT: Self = Self::new(255, 0, 0, 0);
-    pub const WHITE: Self = Self::new(0, 255, 255, 255);
-    pub const RED: Self = Self::new(0, 255, 0, 0);
-    pub const GREEN: Self = Self::new(0, 0, 255, 0);
-    pub const BLUE: Self = Self::new(0, 0, 0, 255);
-    pub const YELLOW: Self = Self::new(0, 255, 255, 0);
-    pub const CYAN: Self = Self::new(0, 0, 255, 255);
-    pub const MAGENTA: Self = Self::new(0, 255, 0, 255);
-    pub const ORANGE: Self = Self::new(0, 255, 247, 0);
-    pub const TURQUOISE: Self = Self::new(0, 0, 255, 247);
-    pub const VIOLET: Self = Self::new(0, 247, 0, 255);
-}
-
-impl Index<usize> for Light {
-    type Output = u8;
-    
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.0.as_array()[index]
-    }
-}
-
-impl IndexMut<usize> for Light {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.0.as_mut_array()[index]
-    }
-}
-
-impl PartialOrd for Light {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.max_channel().partial_cmp(&other.max_channel())
+    /// Set the HSL lightness.
+    pub fn set_lightness(&mut self, lightness: u8) {
+        assert!(lightness <= 15, "Lightness must be in range [0, 15]");
+        self.0 = (self.0 & !(0xF << 12)) | ((lightness as u16) << 12);
     }
 }

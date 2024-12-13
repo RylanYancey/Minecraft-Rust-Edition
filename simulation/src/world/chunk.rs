@@ -1,254 +1,279 @@
+use std::ops::Shl;
 
-use std::{simd::u32x16, slice::Iter};
+use bevy::math::IVec2;
 
-use crate::{blocks::{BlockState, Light}, data::registry::LocalID};
+use crate::{blocks::Light, data::registry::LocalID};
 
 use super::*;
+use super::util::*;
 
+/// Subchunks are square, so the dims of a subchunk
+/// is CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH.
+///
+// The value of this field _MUST_ be a power of 2.
+pub const CHUNK_WIDTH: usize = 32;
+
+/// The length of the buffer containnig blocks within a subchunk.
+pub const CHUNK_LEN: usize = CHUNK_WIDTH * CHUNK_WIDTH * CHUNK_WIDTH;
+
+#[derive(Clone, Debug)]
 pub struct Chunk {
-    /// The corodinates of the negative most
-    /// block within the chunk.
-    origin: Vec2<i32>,
+    /// The SubChunks that make up this chunk.
+    /// The order of this buffer is lowest subchunk
+    /// to highest, so subchunks[0] would be a subchunk
+    /// at y=0, subchunk[1] at y=16, and so on. :-)
+    pub(super) subchunks: Vec<Box<SubChunk>>,
 
-    /// Subchunks, from bottom to top.
-    subchunks: Vec<Box<SubChunk>>,
-
-    /// Light Emitters within the chunk.
-    emitters: Vec<Vec3<i32>>,
-
-    /// Indicates whether or not the
-    /// chunk is unloaded, loaded,
-    /// rendered, or simulated.
-    state: ChunkState,
+    /// The origin of the chunk in world-space.
+    /// This refers specifically to the xz coordinates.
+    /// The 'Y' is always assumed to be 0.
+    pub(super) origin: ChunkOrigin,
 }
 
 impl Chunk {
-    pub fn origin(&self) -> &Vec2<i32> {
-        &self.origin
-    }
-
-    /// Index the internal subchunks vector.
-    pub fn index(&self, index: usize) -> Option<&SubChunk> {
-        self.subchunks.get(index).map(|v| &**v)
-    }
-
-    pub fn index_mut(&mut self, index: usize) -> Option<&mut SubChunk> {
-        self.subchunks.get_mut(index).map(|v| &mut**v)
-    }
-
-    /// get the height of the subchunks that are
-    /// loaded into memory. Block locations below 0 are
-    /// considered out-of-bounds, while block locations
-    /// above the stored height are not - just air. 
-    /// 
-    /// TL;DR: Subchunks aren't loaded if they are all air.
-    pub fn stored_height(&self) -> i32 {
-        self.subchunks.len() as i32 * 16
-    }
-
-    pub fn get_subchunk(&self, height: i32) -> Option<&SubChunk> {
-        if height > 0 && height < self.stored_height() {
-            Some(&self.subchunks[(height as usize) / 16])
-        } else {
-            None
+    /// Get a block, assuming that the position is within the chunks' bounds.
+    /// if the position's xz is not within the chunks' xz, the result of this
+    /// operation is not guaranteed to be correct.
+    ///
+    /// Returns None if the position is above or below the world.
+    pub fn get_block(&self, pos: WorldPos3) -> Option<BlockState> {
+        if pos.y < 0 {
+            return None;
         }
+
+        Some(
+            self.subchunks
+                .get((pos.y as usize) / CHUNK_WIDTH)?
+                .get_block(pos),
+        )
     }
 
-    pub fn state(&self) -> &ChunkState {
-        &self.state
-    }
+    /// Get the subchunk within the chunk that contains the given
+    /// y value, if it exists. Returns none if the value is above or below the chunk.
+    pub fn get_subchunk(&self, y: i32) -> Option<&SubChunk> {
+        if y < 0 {
+            return None;
+        }
 
-    pub fn is_simulated(&self) -> bool {
-        self.state == ChunkState::Simulated
-    }
-
-    pub fn iter_subchunks(&self) -> impl DoubleEndedIterator<Item=&SubChunk> {
-        self.subchunks.iter().map(|map| &**map)
-    }
-
-    pub fn iter_subchunks_mut(&mut self) -> impl DoubleEndedIterator<Item=&mut SubChunk> {
-        self.subchunks.iter_mut().map(|map| &mut**map)
+        self.subchunks
+            .get((y as usize) / CHUNK_WIDTH)
+            .map(|sub| &**sub)
     }
 }
 
-pub static EMPTY_SUBCHUNK: SubChunk = SubChunk {
-    origin: Vec3(512 * 1000000, 0, 512 * 1000000),
-    blocks: [BlockState { block: LocalID::new(0), light: Light::default()}; 4096]
+pub static EMPTY_CHUNK: Chunk = Chunk {
+    subchunks: Vec::new(),
+    origin: IVec2 { x: i32::MAX, y: i32::MAX },
 };
 
+#[derive(Clone, Debug)]
 pub struct SubChunk {
-    origin: Vec3<i32>,
-    blocks: [BlockState; 4096],
+    /// Buffer that stores the blocks within a
+    /// subchunk. the memory layout of this Subchunk
+    /// is Y, then X, then Z. This means data is
+    /// linear along the Y axis.
+    pub(super) blocks: [BlockState; CHUNK_LEN],
+
+    /// World-space origin of the subchunk, a.k.a.
+    /// the coordinate with the lowest value. The
+    /// first block in blocks is located at the origin,
+    /// and the last block is located at origin + IVec3::splat(CHUNK_WIDTH)
+    pub(super) origin: SubChunkOrigin,
 }
 
 impl SubChunk {
-    pub fn origin(&self) -> &Vec3<i32> {
-        &self.origin
-    }
-
-    pub fn get_block(&self, at: Vec3<i32>) -> Option<BlockState> {
-        let wrap = at & Vec3::splat(15);
-        if at - wrap == self.origin {
-            Some(self.blocks[(wrap.y() + wrap.x() * 16 + wrap.z() * 256) as usize])
-        } else {
-            None
+    pub const fn new(origin: SubChunkOrigin) -> Self {
+        Self {
+            blocks: [BlockState {
+                block: LocalID::new(0),
+                light: Light::ZERO,
+            }; CHUNK_LEN],
+            origin: IVec3::splat(0),
         }
     }
 
-    pub fn as_slice(&self) -> &[BlockState; 4096] {
+    pub const fn origin(&self) -> SubChunkOrigin {
+        self.origin
+    }
+
+    pub const fn as_slice(&self) -> &[BlockState] {
+        &self.blocks.as_slice()
+    }
+
+    pub fn as_slice_mut(&mut self) -> &mut [BlockState] {
+        self.blocks.as_mut_slice()
+    }
+
+    pub const fn as_array(&self) -> &[BlockState; CHUNK_LEN] {
         &self.blocks
     }
 
-    pub fn as_slice_mut(&mut self) -> &mut [BlockState; 4096] {
-        &mut self.blocks
+    /// Get the block at this position, assuming
+    /// that the position is inside of the subchunk.
+    /// If the position is not iside the subchunk,
+    /// this function may panic or return a non-useful result.
+    pub fn get_block(&self, pos: WorldPos3) -> BlockState {
+        self.blocks[to_subchunk_index(pos)]
     }
 
-    /// Returns an iterator over the blocks in the subchunk.
-    /// This iterator is y-major, meaning the data is contiguous
-    /// on the Y axis. This iterator, by default, returns blocks
-    /// in y-order from bottom-to-top. If you want top-to-bottom,
-    /// just call .rev() on the iterator.
-    pub fn blocks<'b>(&'b self) -> Blocks<'b> {
-        self.into_iter()
+    pub fn get_block_mut(&mut self, pos: WorldPos3) -> &mut BlockState {
+        &mut self.blocks[to_subchunk_index(pos)]
     }
 
-    /// Returns the column at the xz coordinates relative to the subchunk.
-    /// x and z must be in the range [0,16)
-    /// 
-    /// Column is an iterator over the column, but can also be indexed.
-    pub fn column<'b>(&'b self, xz: Vec2<i32>) -> Column<'b> {
-        let lower = (xz.x() * 16 + xz.z() * 256) as usize;
+    pub fn set_block(&mut self, pos: WorldPos3, state: BlockState) {
+        self.blocks[to_subchunk_index(pos)] = state;
+    }
 
-        Column {
-            origin: xz.extend_y(self.origin.y()),
-            column: &self.blocks[lower..lower + 16],
-            curr: 0,
-            back: 15,
-        }
+    /// Returns true if the subchunk contains the position.
+    pub fn contains_position(&self, pos: WorldPos3) -> bool {
+        pos.x >= self.origin.x
+            && pos.x < self.origin.x + (CHUNK_WIDTH as i32)
+            && pos.y >= self.origin.y
+            && pos.y < self.origin.y + (CHUNK_WIDTH as i32)
+            && pos.z >= self.origin.z
+            && pos.z < self.origin.z + (CHUNK_WIDTH as i32)
     }
 }
 
-impl<'a> IntoIterator for &'a SubChunk {
-    type IntoIter = Blocks<'a>;
-    type Item = (Vec3<i32>, BlockState);
+/// Compute the index of the block at the world-space coordinates
+/// within this subchunk. If the provided position is not within
+/// the subchunk, the result of this operation is not guaranteed
+/// to be useful.
+#[inline]
+pub fn to_subchunk_index(pos: WorldPos3) -> usize {
+    let pos = to_local_pos(pos);
+    let index = pos.y
+        + pos.x * CHUNK_WIDTH as i32
+        + pos.z * CHUNK_WIDTH as i32 * CHUNK_WIDTH as i32;
+    index as usize
+}
 
-    fn into_iter(self) -> Self::IntoIter {
-        Blocks {
-            origin: self.origin,
-            extent: Vec3::splat(16),
-            blocks: &self.blocks,
-            start: Vec3::splat(0),
-            end: Vec3::splat(15),
-            start_idx: 0,
-            end_idx: 4095,
-        }
+/// Compute the index of the block at local coordinates within this subchunk, 
+/// where each component of the position is already in the range [0,CHUNK_WIDTH)
+#[inline]
+pub const fn to_subchunk_index_prewrapped(pos: LocalPos3) -> usize {
+    (pos.y + pos.x * CHUNK_WIDTH as i32 + pos.z * CHUNK_WIDTH as i32 * CHUNK_WIDTH as i32) as usize
+}
+
+pub static EMPTY_SUBCHUNK: SubChunk = SubChunk {
+    blocks: [BlockState {
+        block: LocalID::new(0),
+        light: Light::default(),
+    }; CHUNK_LEN],
+    origin: IVec3::splat(i32::MAX),
+};
+
+/// Convert a world position to a position within a subchunk.
+/// This wraps the coordinates to the range [0, CHUNK_WIDTH)
+#[inline]
+pub fn to_local_pos(pos: WorldPos3) -> LocalPos3 {
+    pos - to_subchunk_origin(pos)
+}
+
+/// Get the origin of the subchunk containing this position.
+#[inline]
+pub fn to_subchunk_origin(pos: WorldPos3) -> SubChunkOrigin {
+    pos.map(|n| n & !(CHUNK_WIDTH as i32 - 1))
+}
+
+/// Get the origin of the chunk containing this position.
+#[inline]
+pub fn to_chunk_origin(pos: WorldPos2) -> ChunkOrigin {
+    pos.map(|n| n & !(CHUNK_WIDTH as i32 - 1))
+}
+
+/// Get the origin of the containing subchunk
+/// and the local position relative to that origin.
+#[inline]
+pub fn to_origin_local(pos: WorldPos3) -> (SubChunkOrigin, LocalPos3) {
+    let origin = to_subchunk_origin(pos);
+    (origin, pos - origin)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_to_subchunk_origin() {
+        const W: i32 = CHUNK_WIDTH as i32;
+        assert_eq!(IVec3::splat(0), to_subchunk_origin(IVec3::new(8, 4, 3)));
+        assert_eq!(IVec3::new(-W, 0, -W), to_subchunk_origin(IVec3::new(-1, 1, -1)));
+        assert_eq!(IVec3::new(-W, 0, -W), to_subchunk_origin(IVec3::new(-1, 0, -1)));
+        assert_eq!(IVec3::new(-W, 0, 0), to_subchunk_origin(IVec3::new(-1, 0, 0)));
+        assert_eq!(IVec3::splat(0), to_subchunk_origin(IVec3::splat(0)));
+        assert_eq!(IVec3::new(-W, 0, -W), to_subchunk_origin(IVec3::new(-W, 0, -W)));
     }
-}
 
-#[derive(Copy, Clone)]
-pub struct Blocks<'b> {
-    origin: Vec3<i32>,
-    extent: Vec3<i32>,
-    blocks: &'b [BlockState],
-    start: Vec3<i32>,
-    end: Vec3<i32>,
-    start_idx: usize,
-    end_idx: usize,
-}
-
-impl<'b> Iterator for Blocks<'b> {
-    type Item = (Vec3<i32>, BlockState);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.start.y() == self.extent.y() {
-            self.start.1 = 0;
-            self.start.0 += 1;
-
-            if self.start.x() == self.extent.x() {
-                self.start.0 = 0;
-                self.start.2 += 1;
-
-                if self.start.z() == self.extent.z() {
-                    return None
-                }
-            }
-        }
-
-        let result = (self.origin + self.start, self.blocks[self.start_idx]);
-        self.start.0 += 1;
-        self.start_idx += 1;
-
-        Some(result)
+    #[test]
+    fn index_subchunk() {
+        let subchunk = subchunk_for_testing(IVec3::new(0, 0, 0));
+        assert_eq!(0, subchunk.get_block(IVec3::new(0, 0, 0)).block.index());
+        assert_eq!(1, subchunk.get_block(IVec3::new(0, 1, 0)).block.index());
+        assert_eq!(2, subchunk.get_block(IVec3::new(0, 2, 0)).block.index());
+        assert_eq!(
+            CHUNK_LEN as u32 - 1,
+            subchunk.get_block(IVec3::splat((CHUNK_WIDTH - 1) as i32)).block.index()
+        );
+        assert_eq!(
+            CHUNK_WIDTH as u32 - 1,
+            subchunk
+                .get_block(IVec3::new(0, CHUNK_WIDTH as i32 - 1, 0))
+                .block
+                .index()
+        );
     }
-}
 
-impl<'b> DoubleEndedIterator for Blocks<'b> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.end.1 == -1 {
-            self.end.1 = 15;
-            self.end.0 -= 1;
-
-            if self.end.0 == -1 {
-                self.end.0 = 15;
-                self.end.2 -= 1;
-
-                if self.end.2 == -1 {
-                     return None
-                }
-            }
-        }
-
-        let result = (self.origin + self.end, self.blocks[self.end_idx]);
-        self.end.0 -= 1;
-        self.end_idx -= 1;
-        Some(result)
+    #[test]
+    fn index_subchunk_negative() {
+        let subchunk =
+            subchunk_for_testing(IVec3::new(-(CHUNK_WIDTH as i32), 0, -(CHUNK_WIDTH as i32)));
+        assert_eq!(
+            0,
+            subchunk
+                .get_block(IVec3::new(-(CHUNK_WIDTH as i32), 0, -(CHUNK_WIDTH as i32)))
+                .block
+                .index()
+        );
+        assert_eq!(
+            4,
+            subchunk
+                .get_block(IVec3::new(-(CHUNK_WIDTH as i32), 4, -(CHUNK_WIDTH as i32)))
+                .block
+                .index()
+        );
     }
-}
 
-#[derive(Copy, Clone)]
-pub struct Column<'b> {
-    column: &'b [BlockState],
-    origin: Vec3<i32>,
-    curr: usize,
-    back: i32,
-}
-
-impl<'b> Column<'b> {
-    pub fn index(&self, index: usize) -> (Vec3<i32>, BlockState) {
-        (self.origin + Vec3(0, index as i32, 0), self.column[index])
-    } 
-}
-
-impl<'b> Iterator for Column<'b> {
-    type Item = (Vec3<i32>, BlockState);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.curr == self.column.len() {
-            None
-        } else {
-            let result = (self.origin + Vec3(0, self.curr as i32, 0), self.column[self.curr]);
-            self.curr += 1;
-            Some(result)
-        }
+    #[test]
+    fn get_subchunks() {
+        let chunk = chunk_for_testing(IVec2::new(0, 0));
+        assert_eq!(
+            IVec3::new(0, 0, 0),
+            chunk.get_subchunk(3).unwrap().origin
+        );
+        assert_eq!(
+            IVec3::new(0, CHUNK_WIDTH as i32, 0),
+            chunk
+                .get_subchunk(CHUNK_WIDTH as i32 + 2)
+                .unwrap()
+                .origin
+        );
     }
-}
 
-impl<'b> DoubleEndedIterator for Column<'b> {
-    fn next_back(&mut self) -> Option<Self::Item> {
-        if self.back == -1 {
-            None
-        } else {
-            let result = (self.origin + Vec3(0, self.back, 0), self.column[self.back as usize]);
-            self.back -= 1;
-            Some(result)
-        }
+    #[test]
+    fn get_subchunks_negative() {
+        let origin = IVec2::new(-(CHUNK_WIDTH as i32), -(CHUNK_WIDTH as i32));
+        let chunk = chunk_for_testing(origin);
+        assert_eq!(
+            IVec3::new(origin.x, 0, origin.y),
+            chunk.get_subchunk(0).unwrap().origin
+        );
+        assert_eq!(
+            IVec3::new(origin.x, CHUNK_WIDTH as i32, origin.y),
+            chunk
+                .get_subchunk(CHUNK_WIDTH as i32 + 2)
+                .unwrap()
+                .origin
+        );
     }
-}
-
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
-pub enum ChunkState {
-    Unloaded,
-    Loaded,
-    Rendered,
-    Simulated
 }
