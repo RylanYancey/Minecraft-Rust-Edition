@@ -1,7 +1,7 @@
 
-use std::slice::Iter;
+use std::{simd::u32x16, slice::Iter};
 
-use crate::blocks::{BlockID, BlockState, Light};
+use crate::{blocks::{BlockState, Light}, data::registry::LocalID};
 
 use super::*;
 
@@ -73,7 +73,7 @@ impl Chunk {
 
 pub static EMPTY_SUBCHUNK: SubChunk = SubChunk {
     origin: Vec3(512 * 1000000, 0, 512 * 1000000),
-    blocks: [BlockState { block: BlockID::AIR, light: Light::default()}; 4096]
+    blocks: [BlockState { block: LocalID::new(0), light: Light::default()}; 4096]
 };
 
 pub struct SubChunk {
@@ -120,7 +120,7 @@ impl SubChunk {
         let lower = (xz.x() * 16 + xz.z() * 256) as usize;
 
         Column {
-            origin: xz.extend_y(*self.origin.y()),
+            origin: xz.extend_y(self.origin.y()),
             column: &self.blocks[lower..lower + 16],
             curr: 0,
             back: 15,

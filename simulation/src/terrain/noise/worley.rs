@@ -1,15 +1,18 @@
 
 use crate::math::{Vec2, Vec3};
-use super::{hash::Permutation, noisemap::{Fbm, Generator}};
+use crate::terrain::{hash::Permutation, noisemap::{Fbm, Generator}};
 
 pub struct Worley2x3;
 
-impl Generator<[f32; 3]> for Worley2x3 {
+impl Generator for Worley2x3 {
+    type Output = [f32; 3];
+    
     fn sample(&self, pos: Vec3<i32>, fbm: &Fbm, perm: &Permutation) -> [f32; 3] {
         worley2x3(pos.xz().map(|n| *n as f32 * fbm.frequency), perm)
     }
 }
 
+/// Compute the distance to the nearest point in a worley grid.
 pub fn worley2(pos: Vec2<f32>, perm: &Permutation) -> f32 {
     let mut min = f32::MAX;
     let floor = pos.map(|v| *v as i32);
@@ -29,8 +32,12 @@ pub fn worley2(pos: Vec2<f32>, perm: &Permutation) -> f32 {
     min
 }
 
-/// Sample Worley2D at this position, returning the distances
-/// to each point, in the order of nearest to furthest.
+pub fn worley2x2(pos: Vec2<f32>, perm: &Permutation) -> [f32; 2] {
+    let [a, b, _] = worley2x3(pos, perm);
+    [a, b]
+}
+
+/// Compute the distances to the 3 nearest points in the worley grid.
 pub fn worley2x3(pos: Vec2<f32>, perm: &Permutation) -> [f32; 3] {
     let mut distances = [0.0; 9];
     let mut i = 0;
@@ -51,6 +58,7 @@ pub fn worley2x3(pos: Vec2<f32>, perm: &Permutation) -> [f32; 3] {
     [distances[0], distances[1], distances[2]]
 }
 
+/// Compute the distance to the neraest point in a worley grid.
 pub fn worley3(pos: Vec3<f32>, perm: &Permutation) -> f32 {
     let mut min = f32::MAX;
     let floor = pos.map(|v| *v as i32);
@@ -73,6 +81,7 @@ pub fn worley3(pos: Vec3<f32>, perm: &Permutation) -> f32 {
     min
 }
 
+/// Compute the distance to the nearest 3 points in a worley grid.
 pub fn worley3x3(pos: Vec3<f32>, perm: &Permutation) -> [f32; 3] {
     let mut min = [f32::MAX; 3];
     let floor = pos.map(|v| *v as i32);

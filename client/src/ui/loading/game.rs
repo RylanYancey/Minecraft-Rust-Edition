@@ -34,7 +34,7 @@ pub fn draw_game_load_screen(assets: Res<AssetServer>, mut commands: Commands) {
                     parent.spawn((
                         Text::new("JANZEN"),
                         TextFont {
-                            font: assets.load("fonts/company.otf"),
+                            font: assets.load("fonts/company.ttf"),
                             font_size: 150.0,
                             ..default()
                         },

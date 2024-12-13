@@ -22,7 +22,7 @@ use bevy::prelude::Color;
 ///
 /// This allows us to have 4096 different colors
 /// and 16 different intensities.
-#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+#[derive(Copy, Clone, Eq, PartialEq, Debug, Ord)]
 pub struct Light(Simd<u8, 4>);
 
 impl Light {
@@ -87,6 +87,10 @@ impl Light {
         &mut self.0
     }
 
+    pub fn as_u32(&self) -> u32 {
+        u32::from_le_bytes(*self.as_array())
+    }
+
     /// Get the ambient channel.
     pub fn a(&self) -> u8 {self[0]}
     pub fn r(&self) -> u8 {self[1]}
@@ -133,5 +137,11 @@ impl Index<usize> for Light {
 impl IndexMut<usize> for Light {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         &mut self.0.as_mut_array()[index]
+    }
+}
+
+impl PartialOrd for Light {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.max_channel().partial_cmp(&other.max_channel())
     }
 }

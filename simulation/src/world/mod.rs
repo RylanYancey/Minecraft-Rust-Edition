@@ -10,6 +10,7 @@ use chunk::EMPTY_SUBCHUNK;
 pub use chunk::{Chunk, SubChunk};
 pub use region::Region;
 pub use reader::WorldReader;
+pub use iter::SpatialIter3D;
 
 // Module Declarations //
 mod chunk;
@@ -18,6 +19,7 @@ mod reader;
 mod cached;
 mod events;
 mod light;
+mod iter;
 
 #[derive(Resource)]
 pub struct World {
@@ -60,7 +62,7 @@ impl World {
 
     #[inline]
     pub fn get_subchunk(&self, at: Vec3<i32>) -> Option<&SubChunk> {
-        if *at.y() < 0 {
+        if at.y() < 0 {
             None
         } else {
             let region_wrap = at.xz() & Vec2::splat(511);
@@ -68,13 +70,13 @@ impl World {
             let region = self.regions.get(&id)?;
             let index = region_wrap / Vec2::splat(16);
             let chunk = region.index(*index.x() as usize, *index.z() as usize);
-            chunk.index((*at.y() / 16) as usize)
+            chunk.index((at.y() / 16) as usize)
         }
     }
 
     #[inline]
     pub fn get_subchunk_mut(&mut self, at: Vec3<i32>) -> Option<&mut SubChunk> {
-        if *at.y() < 0 {
+        if at.y() < 0 {
             None
         } else {
             let region_wrap = at.xz() & Vec2::splat(511);
@@ -82,7 +84,7 @@ impl World {
             let region = self.regions.get_mut(&id)?;
             let index = region_wrap / Vec2::splat(16);
             let chunk = region.index_mut(*index.x() as usize, *index.z() as usize);
-            chunk.index_mut((*at.y() / 16) as usize)
+            chunk.index_mut((at.y() / 16) as usize)
         }
     }
 

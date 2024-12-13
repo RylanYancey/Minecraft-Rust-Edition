@@ -1,6 +1,7 @@
 
 use bevy::prelude::*;
 use stages::TerrainStage;
+use std::collections::HashMap;
 use std::sync::Mutex;
 use std::{collections::VecDeque, sync::Arc, thread::JoinHandle};
 use crate::{math::Vec3, world::Chunk};
@@ -9,8 +10,10 @@ use rayon::ThreadPool;
 
 pub mod stages;
 pub mod noisemap;
-pub mod worley;
 pub mod hash;
+pub mod noise;
+pub mod biome;
+pub mod fbm;
 
 #[derive(Resource)]
 pub struct TerrainGenerator {
@@ -39,3 +42,7 @@ impl TerrainWorker {
 
 unsafe impl Sync for TerrainGenerator {}
 unsafe impl Send for TerrainGenerator {}
+
+pub struct WorldGenerator {
+    pub fbms: HashMap<String, fbm::FBM>,
+}

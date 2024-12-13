@@ -93,8 +93,8 @@ impl<I> DerefMut for Entry<I> {
 pub struct GlobalID(u32);
 
 impl GlobalID {
-    pub fn new(hash: u32) -> Self {
-        Self(hash)
+    pub const fn new(name: &'static str) -> Self {
+        Self(Id::new(name).id())
     }
     
     pub fn hash(&self) -> u32 {
@@ -111,7 +111,7 @@ impl GlobalID {
 pub struct LocalID(u32);
 
 impl LocalID {
-    pub fn new(index: u32) -> Self {
+    pub const fn new(index: u32) -> Self {
         Self(index)
     }
     

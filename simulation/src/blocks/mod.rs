@@ -1,23 +1,23 @@
 
 // imports 
 use crate::{data::TagSet, math::collider::BoundingBox};
-use bevy::color::Color;
+use bevy::{color::Color, math::{bounding::Aabb3d, Vec3A}};
+use bevy::math::Vec3;
 
 // exports
-pub use id::BlockID;
 pub use light::Light;
 pub use state::BlockState;
-pub use face::{Faces, Face, FaceRotation, Pixels};
+pub use face::{Faces, Face, FaceRotation, Pixels, FaceCoverage};
 pub use collider::BlockCollider;
-
+pub use face::Transparency;
 
 // module declarations
-mod id;
 mod light;
 mod state;
 mod face;
 mod tag;
 mod collider;
+mod light2;
 
 pub struct Block {
     /// Description of the faces in a block,
@@ -36,4 +36,23 @@ pub struct Block {
 
     /// Whether or not the block emits light.
     pub emits_light: Option<Color>,
+}
+
+impl Default for Block {
+    fn default() -> Self {
+        Self {
+            faces: Faces::all(Face {
+                transparent: false,
+                coverage: FaceCoverage::Full,
+            }),
+            tags: TagSet::new(),
+            colliders: vec![
+                BlockCollider {
+                    bounds: Aabb3d::new(Vec3::splat(0.5), Vec3::splat(0.5)),
+                    is_solid: true,
+                }
+            ],
+            emits_light: None
+        }
+    }
 }

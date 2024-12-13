@@ -1,0 +1,32 @@
+
+Block(
+    name: "mc:stone",
+    
+    events: {
+                
+    },
+
+    sounds: {
+        hit: Define([
+            "mc:hit:stone:1",
+            "mc:hit:stone:2",
+            "mc:hit:stone:3",
+            "mc:hit:stone:4",
+        ]),
+
+        place: Define([
+            "mc:place:stone:1",
+            "mc:place:stone:2",
+            "mc:place:stone:3",
+            "mc:place:stone:4",       
+        ]),
+
+        jump: Define([
+             
+        ]),
+
+        fall: Inherit("this.hit"),
+        step: Inherit("this.hit"),
+        break: Inherit("this.place"),
+    }
+)

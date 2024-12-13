@@ -4,21 +4,36 @@ use super::{one::{One, Zero}, Vec2};
 #[derive(Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Debug)]
 pub struct Vec3<T>(pub T, pub T, pub T);
 
-impl<T> Vec3<T> {
+impl<T: Copy> Vec3<T> {
     pub fn new(x: T, y: T, z: T) -> Self {
         Self(x, y, z)
     }
 
-    pub fn x(&self) -> &T {
-        &self.0
+    pub fn x(&self) -> T {
+        self.0
     }
 
-    pub fn y(&self) -> &T {
-        &self.1
+    pub fn y(&self) -> T {
+        self.1
     }
 
-    pub fn z(&self) -> &T {
-        &self.2
+    pub fn z(&self) -> T {
+        self.2
+    }
+
+    pub fn with_x(mut self, x: T) -> Self {
+        self.0 = x;
+        self
+    }
+
+    pub fn with_y(mut self, y: T) -> Self {
+        self.1 = y;
+        self
+    }
+
+    pub fn with_z(mut self, z: T) -> Self {
+        self.2 = z;
+        self
     }
 
     pub fn map<F, K>(&self, f: F) -> Vec3<K>
@@ -121,6 +136,12 @@ impl Vec3<f32> {
             (self.1 - rhs.1).powi(2) + 
             (self.2 - rhs.2).powi(2)
         )
+    }
+}
+
+impl<T: Mul<Output=T>> Vec3<T> {
+    pub fn prod(self) -> T {
+        self.0 * self.1 * self.2
     }
 }
 

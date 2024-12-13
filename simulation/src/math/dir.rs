@@ -1,3 +1,7 @@
+use std::ops::Add;
+
+use bevy::math::IVec3;
+
 use super::Vec3;
 
 
@@ -38,6 +42,17 @@ impl Dir {
     pub fn to_index(&self) -> usize {
         (*self as isize) as usize
     }
+
+    pub fn invert(self) -> Self {
+        match self {
+            Self::Up => Self::Down,
+            Self::Down => Self::Up,
+            Self::East => Self::West,
+            Self::West => Self::East,
+            Self::South => Self::North,
+            Self::North => Self::South,
+        }
+    }
 }
 
 impl Into<Vec3<i32>> for Dir {
@@ -52,3 +67,17 @@ impl From<Vec3<i32>> for Dir {
     }
 }
 
+impl Add<IVec3> for Dir {
+    type Output = IVec3;
+
+    fn add(self, rhs: IVec3) -> Self::Output {
+        match self {
+            Self::Up => rhs.with_y(rhs.y + 1),
+            Self::Down => rhs.with_y(rhs.y - 1),
+            Self::East => rhs.with_x(rhs.x + 1),
+            Self::West => rhs.with_x(rhs.x - 1),
+            Self::North => rhs.with_z(rhs.z + 1),
+            Self::South => rhs.with_z(rhs.z - 1)
+        }
+    }
+}

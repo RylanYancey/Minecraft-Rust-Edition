@@ -12,3 +12,5 @@ rand_pcg.workspace = true
 boomphf = "0.6.0"
 libnoise = "1.1.2"
 xxhash-rust = { version = "0.8.12", features = ["xxh32", "const_xxh32"] }
+bitflags = "2.6.0"
+arrayvec = "0.7.6"

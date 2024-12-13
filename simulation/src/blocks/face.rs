@@ -4,99 +4,130 @@ use crate::math::Dir;
 /// The data is stored as (Face, bool), where
 /// the Face is the coverage of the block and
 /// the boolean indicates whether or not the
-/// block is transparent. 
+/// block is transparent.
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub struct Faces([Face; 6]);
+pub struct Faces {
+    /// Descriptions of the faces of a block.
+    /// In the order Up, Down, East, West, North, South.
+    pub faces: [Face; 6],
+
+    /// A bitmask of face transparency used for
+    /// optimizing light computation. Each '1'
+    /// in this mask corresponds to a direction
+    /// of a face on the block that allows light
+    /// to pass into the block.
+    pub bitmask: Transparency,
+}
 
 impl Faces {
     pub fn all(face: Face) -> Self {
-        Self([face; 6])
+        Self {
+            faces: [face; 6],
+            bitmask: Transparency(if face.is_transparent() {
+                0b00111111
+            } else {
+                0b0
+            }),
+        }
     }
 
     pub fn with(mut self, dir: Dir, face: Face) -> Self {
-        self.0[dir.to_index()] = face;
+        self.faces[dir.to_index()] = face;
+        if face.is_transparent() {
+            self.bitmask |= dir.into();
+        }
         self
     }
 
     pub fn set(&mut self, dir: Dir, face: Face) {
-        self.0[dir.to_index()] = face;
+        self.faces[dir.to_index()] = face;
+        if face.is_transparent() {
+            self.bitmask |= dir.into();
+        }
     }
 
     /// Get the face in the specified direction.
     /// The boolean returned indicates whether or
     /// not the face is transparent.
     pub fn get(&self, dir: Dir) -> Face {
-        self.0[dir.to_index()]
+        self.faces[dir.to_index()]
     }
 
     pub fn up(&self) -> Face {
-        self.0[Dir::Up.to_index()]
+        self.faces[Dir::Up.to_index()]
     }
 
     pub fn down(&self) -> Face {
-        self.0[Dir::Down.to_index()]
+        self.faces[Dir::Down.to_index()]
     }
 
     pub fn east(&self) -> Face {
-        self.0[Dir::East.to_index()]
+        self.faces[Dir::East.to_index()]
     }
 
     pub fn west(&self) -> Face {
-        self.0[Dir::West.to_index()]
+        self.faces[Dir::West.to_index()]
     }
 
     pub fn north(&self) -> Face {
-        self.0[Dir::North.to_index()]
+        self.faces[Dir::North.to_index()]
     }
 
     pub fn south(&self) -> Face {
-        self.0[Dir::South.to_index()]
+        self.faces[Dir::South.to_index()]
     }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub struct Face {
-    pub opacity: bool,
+    pub transparent: bool,
     pub coverage: FaceCoverage,
+}
+
+impl Face {
+    /// Returns `true` if the face is transparent or
+    pub fn is_transparent(&self) -> bool {
+        self.coverage != FaceCoverage::Full || self.transparent
+    }
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
 pub enum FaceCoverage {
     //// The face exists and takes up
     /// 100% of the face space.
-    /// 
+    ///
     /// Examples: Glass Block, Stone Block.
     Full,
 
     /// The face does not exist.
-    /// 
+    ///
     /// Examples: Air, Grass
     None,
 
     /// The face exists, but only a part of the block.
-    /// The Direction indicates the side of the block 
+    /// The Direction indicates the side of the block
     /// that is up against the edge and extents from corner
     /// to corner.
-    /// 
+    ///
     /// For example, for the south side of a bottom slab,
     /// this would be Face::Half(Dir::Down, Pixels::Px8).
-    /// 
+    ///
     /// Examples: Half Slab
     Half {
-        side: Dir, 
-        width: Pixels
+        side: Dir,
+        width: Pixels,
     },
 
     /// The face is inset into the block.
     /// Used for in-set torches and other
     /// decorative blocks.
-    /// 
-    /// Examples: 
+    ///
+    /// Examples:
     ///  - Farmland: Face::Inset { torchable: None, distance: Pixels::Px1 }
     ///  - Wall: Face::Inset { torchable: Some(Pixels::Px7), distance: Pixels::Px6 }
     ///  - Top of Slab: Face::Inset { torchable: Some(Pixels::Px8), distance: Pixels::Px8 }
     ///  - Front of Pane: Face::Inset { torchable: None, distance: Pixels::Px7 }
-    /// 
+    ///
     /// The torchable parameter refers to whether or not a torch (or similar decorative block)
     /// can be placed onthe inset face. If so, the pixel value refers to the center where the
     /// block should sit within the face. So, if you want to shift the inset block down 1
@@ -104,13 +135,13 @@ pub enum FaceCoverage {
     Inset {
         torchable: Option<Pixels>,
         distance: Pixels,
-    }, 
+    },
 
     Cross(Pixels),
 
     /// An L-Shape has two sides with a width of 16
     /// that are along the edge of the block.
-    /// 
+    ///
     /// Examples
     ///  - Stairs
     LShape {
@@ -131,11 +162,11 @@ pub enum FaceCoverage {
     ///  - Bottom of wall: Square(Pixels::Px4)
     Square(Pixels),
 
-    /// The face is pinched on two sides, but 
+    /// The face is pinched on two sides, but
     /// still has a height of 16. The Direction
     /// must be positive and denotes the side that
     /// has a width of 16.
-    /// 
+    ///
     /// Examples
     ///  - Side of Glass Pane: Pinched { width: Pixels::Px2, dir: Dir::Up }
     Pinched {
@@ -190,7 +221,7 @@ impl Pixels {
             13 => Self::Px13,
             14 => Self::Px14,
             15 => Self::Px15,
-            _ => panic!("Invalid Face Width: {u}")
+            _ => panic!("Invalid Face Width: {u}"),
         }
     }
 }
@@ -203,3 +234,39 @@ pub enum FaceRotation {
     Deg270,
 }
 
+/// Whether or not the faces of a block allow
+/// light to pass through them.
+#[derive(Copy, Clone, Eq, PartialEq, Debug)]
+pub struct Transparency(pub u8);
+
+impl Transparency {
+    /// Returns true if self has all the same
+    /// transparent faces as rhs.
+    pub fn has(&self, rhs: Self) -> bool {
+        *self & rhs == rhs
+    }
+}
+
+impl From<Dir> for Transparency {
+    fn from(value: Dir) -> Self {
+        match value {
+            Dir::Up => Self::UP,
+            Dir::Down => Self::DOWN,
+            Dir::East => Self::EAST,
+            Dir::West => Self::WEST,
+            Dir::North => Self::NORTH,
+            Dir::South => Self::SOUTH,
+        }
+    }
+}
+
+bitflags::bitflags! {
+    impl Transparency: u8 {
+        const UP    = 0b0000_0001;
+        const DOWN  = 0b0000_0010;
+        const EAST  = 0b0000_0100;
+        const WEST  = 0b0000_1000;
+        const NORTH = 0b0001_0000;
+        const SOUTH = 0b0010_0000;
+    }
+}
